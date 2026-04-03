@@ -33,6 +33,7 @@ import DocumentPanel from "../admin_components/DocumentPanel";
 import BlotterPanel from "../admin_components/BlotterPanel";
 import TransactionPanel from "../admin_components/TransactionPanel"; 
 import SettingPanel from "../admin_components/SettingPanel"; 
+import { API_BASE } from "../utils/apiBase";
 
 const navItems = [
   { label: "Dashboard", Icon: LayoutDashboard },
@@ -46,8 +47,6 @@ const navItems = [
   { label: "Settings", Icon: Settings },
 ];
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
-
 export default function App() {
   const [darkMode, setDarkMode] = useState(false);
   const [activeNav, setActiveNav] = useState("Dashboard");
@@ -59,7 +58,7 @@ export default function App() {
   useEffect(() => {
     const fetchSystemLogo = async () => {
       try {
-        const res = await fetch(`${API_URL}/api/settings`);
+        const res = await fetch(`${API_BASE}/settings`);
         if (res.ok) {
           const data = await res.json();
           if (data.systemLogoBase64 || data.logoBase64) {
@@ -200,7 +199,7 @@ export default function App() {
   useEffect(() => {
     const fetchMessages = async () => {
       try {
-        const res = await fetch(`${API_URL}/api/messages/admin`);
+        const res = await fetch(`${API_BASE}/messages/admin`);
         if (res.ok) {
           const data = await res.json();
           console.log("Fetched messages:", data); // Debug log
@@ -290,10 +289,10 @@ export default function App() {
     const fetchAnnouncementNotifications = async () => {
       try {
         // Fetch announcements with Message Type: Reminder or Emergency (these show in notifications)
-        const res = await fetch(`${API_URL}/api/announcements?messageType=Reminder`);
+        const res = await fetch(`${API_BASE}/announcements?messageType=Reminder`);
         const reminderData = res.ok ? await res.json() : [];
         
-        const res2 = await fetch(`${API_URL}/api/announcements?messageType=Emergency`);
+        const res2 = await fetch(`${API_BASE}/announcements?messageType=Emergency`);
         const emergencyData = res2.ok ? await res2.json() : [];
         
         // Combine and format for notifications
@@ -336,7 +335,7 @@ export default function App() {
       const userInfo = JSON.parse(localStorage.getItem("userInfo") || "{}");
       const adminId = userInfo?.resident?.id || userInfo?.resident?._id;
       
-      const res = await fetch(`${API_URL}/api/messages/${selectedMessage._id}/reply`, {
+      const res = await fetch(`${API_BASE}/messages/${selectedMessage._id}/reply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -348,13 +347,13 @@ export default function App() {
       if (!res.ok) throw new Error("Failed to send reply");
 
       // Mark message as read by admin
-      await fetch(`${API_URL}/api/messages/${selectedMessage._id}/read`, {
+      await fetch(`${API_BASE}/messages/${selectedMessage._id}/read`, {
         method: "PUT",
       });
 
       // Refresh messages to get updated reply status (keep all messages visible - NEVER remove)
       try {
-        const messagesRes = await fetch(`${API_URL}/api/messages/admin`);
+        const messagesRes = await fetch(`${API_BASE}/messages/admin`);
         if (messagesRes.ok) {
           const updatedMessages = await messagesRes.json();
           

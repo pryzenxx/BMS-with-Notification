@@ -2,8 +2,9 @@ import React, { useState, useEffect } from "react";
 import { toast } from "react-hot-toast";
 import { BmsToaster } from "../components/BmsToaster";
 import { Pencil, X, Loader2 } from "lucide-react";
+import { API_ORIGIN } from "../utils/apiBase";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const API_URL = API_ORIGIN;
 
 const FIELD_CLASS =
   "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-slate-600 dark:bg-slate-800/90 dark:text-slate-100";

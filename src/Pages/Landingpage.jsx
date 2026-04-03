@@ -19,7 +19,7 @@ import { CheckCircle, XCircle } from "lucide-react";
 // -----------------------------------------------------------------------------------
 
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+import { API_ORIGIN, API_BASE } from "../utils/apiBase";
 
 function FloatingAnnouncementBodyIcon({ kind, className = "w-4 h-4 shrink-0" }) {
   if (kind === "alert") return <FaExclamationTriangle className={className} aria-hidden />;
@@ -75,7 +75,7 @@ const [loading, setLoading] = useState(false);
 useEffect(() => {
     const fetchOfficials = async () => {
       try {
-        const res = await fetch("http://localhost:5000/api/officials");
+        const res = await fetch(`${API_BASE}/officials`);
         const data = await res.json();
      
 
@@ -149,7 +149,7 @@ useEffect(() => {
   useEffect(() => {
     const fetchSettings = async () => {
       try {
-        const res = await fetch(`${API_URL}/api/settings`);
+        const res = await fetch(`${API_BASE}/settings`);
         if (res.ok) {
           const data = await res.json();
           setSystemSettings({
@@ -934,9 +934,7 @@ function LoginForm({ switchToRegister, switchToForgotPassword, setLoading, setSu
     setLoading(true);
 
     try {
-      const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
-
-      const res = await fetch(`${API_URL}/api/auth/login`, {
+      const res = await fetch(`${API_BASE}/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -1138,7 +1136,7 @@ function RegisterForm({ switchToLogin, setLoading, setSuccessMsg, setErrorMsg })
 
     setLoading(true);
     try {
-      const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+      const API_URL = API_ORIGIN;
       const fd = new FormData();
 
       for (const key in formData) {
@@ -1461,7 +1459,7 @@ function ForgotPasswordForm({ switchToLogin, setLoading, setSuccessMsg, setError
     setOtpRequesting(true);
     setErrorMsg("");
     try {
-      const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+      const API_URL = API_ORIGIN;
       const res = await fetch(`${API_URL}/api/auth/request-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1496,7 +1494,7 @@ function ForgotPasswordForm({ switchToLogin, setLoading, setSuccessMsg, setError
     setOtpVerifying(true);
     setErrorMsg("");
     try {
-      const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+      const API_URL = API_ORIGIN;
       const res = await fetch(`${API_URL}/api/auth/verify-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1524,7 +1522,7 @@ function ForgotPasswordForm({ switchToLogin, setLoading, setSuccessMsg, setError
     setLoading(true);
     setErrorMsg("");
     try {
-      const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+      const API_URL = API_ORIGIN;
       const res = await fetch(`${API_URL}/api/auth/reset-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

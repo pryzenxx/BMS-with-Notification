@@ -5,7 +5,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import logo from "../assets/logo.png";
 import logo1 from "../assets/logo1.png";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+import { API_BASE } from "../utils/apiBase";
 
 const DocumentPanel = () => {
   const [adminForm, setAdminForm] = useState({ type: "Residency Certificate", name: "", purpose: "" });
@@ -30,7 +30,7 @@ const DocumentPanel = () => {
   useEffect(() => {
     const fetchResidents = async () => {
       try {
-        const res = await fetch("http://localhost:5000/api/residents");
+        const res = await fetch(`${API_BASE}/residents`);
         const data = await res.json();
         const formatted = data.map((r) => ({
           ...r,
@@ -48,7 +48,7 @@ const DocumentPanel = () => {
   const fetchDocumentRequests = useCallback(async () => {
     try {
       setRequestsLoading(true);
-      const res = await fetch(`${API_URL}/api/document-requests`);
+      const res = await fetch(`${API_BASE}/document-requests`);
       if (!res.ok) throw new Error("Failed to load document requests");
       const data = await res.json();
       const formatted = Array.isArray(data)

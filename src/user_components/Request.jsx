@@ -20,6 +20,7 @@ import { toast } from "react-hot-toast";
 import "swiper/css";
 import "swiper/css/pagination";
 import { appendUserActivity } from "../utils/activityLog";
+import { API_BASE } from "../utils/apiBase";
 
 const documentOptions = [
   { id: 1, name: "Residency Certificate", price: 40 },
@@ -32,10 +33,6 @@ const documentOptions = [
   { id: 8, name: "First Time Jobseeker Assistance", price: 25 },
   { id: 9, name: "Barangay ID", price: 100 },
 ];
-
-const API_BASE = import.meta.env.VITE_API_URL
-  ? `${import.meta.env.VITE_API_URL}/api`
-  : "http://localhost:5000/api";
 
 const getResidentId = () => {
   try {

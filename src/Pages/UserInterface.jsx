@@ -6,6 +6,7 @@ import Request from "../user_components/Request";
 import Profile from "../user_components/Profile";
 import Transaction from "../user_components/History";
 import { useNavigate } from "react-router-dom";
+import { API_BASE } from "../utils/apiBase";
 
 
 import 'swiper/css';
@@ -43,9 +44,7 @@ export default function App() {
   const [userPhoto, setUserPhoto] = useState("");
   const [notifications, setNotifications] = useState([]);
   const navigate = useNavigate();
-  const API_BASE = import.meta.env.VITE_API_URL
-    ? `${import.meta.env.VITE_API_URL}/api`
-    : "http://localhost:5000/api";
+  // API_BASE is centralized in utils/apiBase for Vercel + local dev
 
 const suggestionsList = [
   "Hello, I need help with my document request.",

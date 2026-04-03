@@ -13,6 +13,7 @@ import {
   LayoutList,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
+import { API_ORIGIN } from "../utils/apiBase";
 
 /** Labels for saved announcements + membership SMS targeting (matches resident fields). */
 const MEMBERSHIP_CATEGORY = {
@@ -102,7 +103,7 @@ const AnnouncementPanel = () => {
   const [publishedModalOpen, setPublishedModalOpen] = useState(false);
   const [toast, setToast] = useState(null);
   const [sendLogs, setSendLogs] = useState([]);
-  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+  const API_URL = API_ORIGIN;
 
   const persistSendLogs = (next) => {
     try {

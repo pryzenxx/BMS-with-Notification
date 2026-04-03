@@ -2,8 +2,9 @@ import React, { useRef, useEffect, useState } from "react";
 import { User, X, Printer } from "lucide-react";
 import logo from "../assets/logo.png";
 import logo1 from "../assets/logo1.png";
+import { API_ORIGIN } from "../utils/apiBase";
 
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+const API_URL = API_ORIGIN;
 
 const yn = (v) => (String(v ?? "").toLowerCase() === "yes" ? "Yes" : "No");
 

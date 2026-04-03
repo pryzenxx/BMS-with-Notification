@@ -4,8 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import logo from "../assets/logo.png";
 import logo1 from "../assets/logo1.png";
 import { readUserActivity, clearUserActivity } from "../utils/activityLog";
-
-const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+import { API_BASE } from "../utils/apiBase";
 
 const History = () => {
   const [history, setHistory] = useState([]);
@@ -20,7 +19,7 @@ const History = () => {
       const residentId = userInfo?.resident?.id || userInfo?.resident?._id;
       if (!residentId) return [];
 
-      const res = await fetch(`${API_URL}/api/document-requests?residentId=${residentId}`);
+      const res = await fetch(`${API_BASE}/document-requests?residentId=${residentId}`);
       if (!res.ok) throw new Error("Failed to fetch requests");
       const data = await res.json();
       return Array.isArray(data) ? data : [];

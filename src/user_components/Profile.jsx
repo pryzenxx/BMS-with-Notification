@@ -19,10 +19,7 @@ import {
 } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { appendUserActivity } from "../utils/activityLog";
-
-const API_BASE = import.meta.env.VITE_API_URL
-  ? `${import.meta.env.VITE_API_URL}/api`
-  : "http://localhost:5000/api";
+import { API_BASE } from "../utils/apiBase";
 
 /** Align with admin PurokPanel: flexible match for "Purok-1" vs "Purok - 1" */
 const normalizePurokKey = (name) => {

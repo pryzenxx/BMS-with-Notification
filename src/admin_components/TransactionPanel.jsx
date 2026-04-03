@@ -4,10 +4,7 @@ import { motion } from "framer-motion";
 import { toast } from "react-hot-toast";
 import logo from "../assets/logo.png";
 import logo1 from "../assets/logo1.png";
-
-const API_BASE = import.meta.env.VITE_API_URL
-  ? `${import.meta.env.VITE_API_URL}/api`
-  : "http://localhost:5000/api";
+import { API_BASE } from "../utils/apiBase";
 
 const formatMoney = (n) => {
   const num = Number(n);

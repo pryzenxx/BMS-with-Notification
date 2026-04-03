@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import Modal from "./Modal";
 import { toast } from "react-hot-toast";
+import { API_BASE } from "../utils/apiBase";
 
 import { Bar } from "react-chartjs-2";
 import {
@@ -117,13 +118,11 @@ export default function DashboardPanel({ onNavigate, onNotificationsUpdate }) {
     { title: "Male", count: "0", icon: <User className="w-6 h-6" />, change: "", sectionId: "#male" },
     { title: "Female", count: "0", icon: <User className="w-6 h-6" />, change: "", sectionId: "#female" },
   ]);
-  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
-
   // Fetch dashboard statistics
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const res = await fetch(`${API_URL}/api/residents/stats/dashboard`);
+        const res = await fetch(`${API_BASE}/residents/stats/dashboard`);
         if (!res.ok) throw new Error("Failed to fetch stats");
         const stats = await res.json();
 

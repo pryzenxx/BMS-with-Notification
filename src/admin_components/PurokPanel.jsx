@@ -4,7 +4,8 @@ import { motion } from "framer-motion";
 import { PlusCircle, Users, Trash2, Eye, House, Edit2, CheckCircle, AlertTriangle, XCircle, Search, Phone, UserCheck } from "lucide-react";
 import { toast } from "react-hot-toast";
 import { BmsToaster } from "../components/BmsToaster";
-const API_URL = import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : "http://localhost:5000/api";
+import { API_BASE } from "../utils/apiBase";
+const API_URL = API_BASE;
 const normalizePhone = (value = "") => value.replace(/\D/g, "").slice(0, 11);
 const isValidPhone = (value = "") => normalizePhone(value).length === 11;
 

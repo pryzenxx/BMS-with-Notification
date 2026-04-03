@@ -3,6 +3,7 @@ import { motion ,AnimatePresence} from "framer-motion";
 import { UserPlus, Printer, Edit2, Eye, Trash2, X ,Users, MapPin, Briefcase, Phone, Calendar,ClipboardList,Clock } from "lucide-react";
 import logo from "../assets/logo.png";
 import logo1 from "../assets/logo1.png";
+import { API_ORIGIN } from "../utils/apiBase";
 
 const FIELD_CLASS =
   "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-900 shadow-sm transition focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/20 dark:border-slate-600 dark:bg-slate-800/90 dark:text-slate-100";
@@ -83,7 +84,7 @@ export default function OfficialPanel() {
   const [newOfficial, setNewOfficial] = useState(createOfficialTemplate());
   const printRef = useRef();
   const [toast, setToast] = useState({ message: "", type: "" });
-  const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000";
+  const API_URL = API_ORIGIN;
   const [oldOfficials, setOldOfficials] = useState([]);
   const [showOldModal, setShowOldModal] = useState(false);
   const [residents, setResidents] = useState([]);
