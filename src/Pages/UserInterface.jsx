@@ -479,6 +479,15 @@ const suggestionsList = [
           >
             {darkMode ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
           </button>
+          <button
+            type="button"
+            onClick={() => setShowLogoutModal(true)}
+            className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200/80 bg-white text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-200"
+            aria-label="Logout"
+            title="Logout"
+          >
+            <LogOut className="h-5 w-5" />
+          </button>
         </div>
       </div>
 
@@ -520,7 +529,7 @@ const suggestionsList = [
       </nav>
 
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex justify-end" aria-hidden>
-        <div className="pointer-events-auto flex w-full max-w-5xl mx-auto justify-end px-4 pb-[max(0.5rem,calc(4.25rem+env(safe-area-inset-bottom,0px)))] pt-0 sm:px-8 sm:pb-6">
+        <div className="pointer-events-none flex w-full max-w-5xl mx-auto justify-end px-4 pb-[max(0.5rem,calc(4.25rem+env(safe-area-inset-bottom,0px)))] pt-0 sm:px-8 sm:pb-6">
           <motion.button
             type="button"
             whileHover={{ scale: 1.03 }}
@@ -530,7 +539,7 @@ const suggestionsList = [
               setMessageDrawerOpen(true);
               setHasUnreadReply(false);
             }}
-            className="group relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-900 text-white shadow-[0_10px_40px_-10px_rgba(15,23,42,0.55)] ring-4 ring-slate-900/10 transition-[box-shadow] hover:shadow-[0_14px_44px_-12px_rgba(15,23,42,0.6)] dark:border-slate-600 dark:bg-white dark:text-slate-900 dark:ring-white/15 dark:hover:bg-slate-100"
+            className="pointer-events-auto group relative flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200/80 bg-slate-900 text-white shadow-[0_10px_40px_-10px_rgba(15,23,42,0.55)] ring-4 ring-slate-900/10 transition-[box-shadow] hover:shadow-[0_14px_44px_-12px_rgba(15,23,42,0.6)] dark:border-slate-600 dark:bg-white dark:text-slate-900 dark:ring-white/15 dark:hover:bg-slate-100"
             aria-label="Open messages to barangay"
           >
             <span className="absolute inset-0 bg-gradient-to-br from-white/15 to-transparent opacity-0 transition-opacity group-hover:opacity-100 dark:from-slate-900/5" />
