@@ -1,0 +1,113 @@
+
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+@import url("https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700&display=swap");
+@theme {
+
+  --font-roboto: "Poppins", sans-serif; 
+}
+.clip-left {
+  clip-path: polygon(0 0, 100% 0, 80% 95%, 0% 100%);
+}
+
+.clip-right {
+  clip-path: polygon(20% 0, 100% 0, 100% 100%, 0% 95%);
+}
+ :root{
+   scroll-behavior: smooth;
+}
+::-webkit-scrollbar{
+    width: 10px;  
+    background-color: #4173ff;
+}
+::-webkit-scrollbar-thumb{
+    border-radius: 1rem;
+    background-color: #ffffff;
+}
+.card {
+  cursor: url('/your-cursor.svg'), auto;
+}
+.swiper-pagination-bullet {
+  width: 10px;
+  height: 10px;
+  background: #ffff !important; /* Light blue */
+  transition: all 0.3s ; 
+}
+.swiper-pagination-bullet-active {
+  background: #2563eb !important; /* Deep blue */
+  transform: scale(1.4);
+}
+@media print {
+  .print\:hidden {
+    display: none !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+}
+.input {
+  @apply border px-4 py-2 rounded w-full;
+}
+.btn {
+  @apply bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600;
+}
+
+/* —— Toast (react-hot-toast / BmsToaster) —— */
+:root {
+  --bms-toast-bg: rgba(255, 255, 255, 0.9);
+  --bms-toast-fg: #0f172a;
+  --bms-toast-border: rgba(148, 163, 184, 0.35);
+  --bms-toast-shadow: 0 20px 50px -18px rgba(15, 23, 42, 0.28);
+  --bms-toast-border-success: rgba(16, 185, 129, 0.4);
+  --bms-toast-shadow-success: 0 20px 50px -16px rgba(16, 185, 129, 0.35);
+  --bms-toast-border-error: rgba(244, 63, 94, 0.45);
+  --bms-toast-shadow-error: 0 20px 50px -16px rgba(244, 63, 94, 0.32);
+  --bms-toast-border-loading: rgba(14, 165, 233, 0.4);
+  --bms-toast-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --bms-toast-ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dark {
+  --bms-toast-bg: rgba(15, 23, 42, 0.92);
+  --bms-toast-fg: #f1f5f9;
+  --bms-toast-border: rgba(71, 85, 105, 0.55);
+  --bms-toast-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.55);
+  --bms-toast-border-success: rgba(52, 211, 153, 0.45);
+  --bms-toast-shadow-success: 0 22px 55px -14px rgba(16, 185, 129, 0.25);
+  --bms-toast-border-error: rgba(251, 113, 133, 0.5);
+  --bms-toast-shadow-error: 0 22px 55px -14px rgba(244, 63, 94, 0.22);
+  --bms-toast-border-loading: rgba(56, 189, 248, 0.45);
+}
+
+@keyframes bms-toast-enter {
+  0% {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.94);
+    filter: blur(6px);
+  }
+  65% {
+    opacity: 1;
+    filter: blur(0);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+
+.bms-toast-motion {
+  animation: bms-toast-enter 0.55s var(--bms-toast-ease) both;
+  transform-origin: 50% 0%;
+}
+
+.bms-toaster-root {
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bms-toast-motion {
+    animation: none;
+  }
+}
