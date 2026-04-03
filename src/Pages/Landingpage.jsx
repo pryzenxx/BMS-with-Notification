@@ -220,7 +220,7 @@ useEffect(() => {
   useEffect(() => {
     const fetchAnnouncements = async () => {
       try {
-        const res = await fetch(`${API_URL}/api/announcements?audience=All`);
+        const res = await fetch(`${API_BASE}/announcements?audience=All`);
         if (!res.ok) throw new Error("Failed to fetch announcements");
         const data = await res.json();
         // Format announcements for display (icons rendered in UI, not emoji in text)
@@ -245,6 +245,15 @@ useEffect(() => {
     };
     fetchAnnouncements();
   }, [systemSettings.barangayName]);
+
+  // Rotate floating announcements
+  useEffect(() => {
+    if (!announcements || announcements.length <= 1) return;
+    const id = setInterval(() => {
+      setAnnouncementIndex((prev) => (prev + 1) % announcements.length);
+    }, 6000);
+    return () => clearInterval(id);
+  }, [announcements]);
 
 
 

@@ -43,6 +43,7 @@ export default function App() {
   const [userName, setUserName] = useState("Resident");
   const [userPhoto, setUserPhoto] = useState("");
   const [notifications, setNotifications] = useState([]);
+  const NOTIF_SEEN_KEY = "userNotificationsSeenAt";
   const navigate = useNavigate();
   // API_BASE is centralized in utils/apiBase for Vercel + local dev
 
@@ -87,6 +88,7 @@ const suggestionsList = [
           })
           .slice(0, 10)
           .map((ann) => ({
+            id: ann._id || ann.id || `${ann.title}-${ann.createdAt || ann.date || ""}`,
             type: ann.type,
             title: ann.title,
             description: ann.message,
@@ -95,6 +97,14 @@ const suggestionsList = [
           }));
         
         setNotifications(formatted);
+
+        // Unread indicator based on last seen timestamp
+        const seenAtRaw = localStorage.getItem(NOTIF_SEEN_KEY);
+        const seenAt = seenAtRaw ? new Date(seenAtRaw).getTime() : 0;
+        const latest = formatted
+          .map((n) => new Date(n.date || 0).getTime())
+          .reduce((max, t) => Math.max(max, t), 0);
+        setUnreadNotifications(latest > seenAt);
       } catch (err) {
         console.error("Error fetching announcements:", err);
         // Keep empty array on error
@@ -405,6 +415,7 @@ const suggestionsList = [
           onClick={() => {
             setNotificationDrawerOpen((prev) => !prev);
             setUnreadNotifications(false);
+            localStorage.setItem(NOTIF_SEEN_KEY, new Date().toISOString());
           }}
         >
           <span className="relative inline-flex">
@@ -451,6 +462,7 @@ const suggestionsList = [
             onClick={() => {
               setNotificationDrawerOpen(true);
               setUnreadNotifications(false);
+              localStorage.setItem(NOTIF_SEEN_KEY, new Date().toISOString());
             }}
             aria-label="Notifications"
           >
@@ -573,7 +585,7 @@ const suggestionsList = [
                 ) : (
                   notifications.map((n, i) => (
                     <motion.div
-                      key={i}
+                      key={n.id || i}
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: Math.min(i * 0.04, 0.3) }}
