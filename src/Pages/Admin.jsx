@@ -1,4 +1,5 @@
-// Imports
+export { default } from "./Admin.jsx";
+
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
