@@ -28,7 +28,7 @@ import {
 } from "lucide-react";
 import Modal from "./Modal";
 import { toast } from "react-hot-toast";
-import { API_BASE } from "../utils/apiBase";
+import { API_BASE, API_ORIGIN } from "../utils/apiBase";
 
 import { Bar } from "react-chartjs-2";
 import {
@@ -95,6 +95,7 @@ const getActivityIcon = (type) => {
 };
 
 export default function DashboardPanel({ onNavigate, onNotificationsUpdate }) {
+  const API_URL = API_ORIGIN;
   const [selectedFilter, setSelectedFilter] = useState("This Month");
   const [chartData, setChartData] = useState({
     labels: ["Residents", "Officials", "Requests", "Transactions"],
