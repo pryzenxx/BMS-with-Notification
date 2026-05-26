@@ -1,11 +1,35 @@
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Printer, FileText, Clock, Eye, CheckCircle2, List, Send, Loader2, FileDown, Download } from "lucide-react";
+import {
+  Printer,
+  FileText,
+  Clock,
+  Eye,
+  CheckCircle2,
+  List,
+  Send,
+  Loader2,
+  FileDown,
+  Download,
+  RefreshCw,
+  X,
+  FileCheck,
+  ClipboardList,
+} from "lucide-react";
 import React, { useState, useEffect, useCallback } from "react";
 import logo from "../assets/logo.png";
 import logo1 from "../assets/logo1.png";
 
 import { API_BASE } from "../utils/apiBase";
+
+const FIELD_CLASS =
+  "w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-900 shadow-sm transition placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 dark:border-slate-600 dark:bg-slate-800/90 dark:text-slate-100 dark:placeholder:text-slate-500";
+
+const BTN_PRIMARY =
+  "inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 disabled:opacity-50";
+
+const BTN_SECONDARY =
+  "inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700/80";
 
 const DocumentPanel = () => {
   const [adminForm, setAdminForm] = useState({ type: "Residency Certificate", name: "", purpose: "" });
@@ -17,11 +41,10 @@ const DocumentPanel = () => {
   const [requestsLoading, setRequestsLoading] = useState(false);
   const [toast, setToast] = useState(null);
   const [viewModal, setViewModal] = useState(null);
-  const [releaseModal, setReleaseModal] = useState(null);
   const [releaseHistoryModal, setReleaseHistoryModal] = useState(false);
-  const [releaseForm, setReleaseForm] = useState({ idType: "", idNumber: "", receiverName: "" });
   const [messageText, setMessageText] = useState("");
   const [lastGeneratedDoc, setLastGeneratedDoc] = useState(null);
+  const [showGeneratedReprint, setShowGeneratedReprint] = useState(false);
 
    const [residents, setResidents] = useState([]);
    const [filteredName, setFilteredName] = useState("");
@@ -113,7 +136,7 @@ const DocumentPanel = () => {
 
   const handleRequestStatusChange = async (request, status, extraPayload = {}) => {
     try {
-      const res = await fetch(`${API_URL}/api/document-requests/${request._id}/status`, {
+      const res = await fetch(`${API_BASE}/document-requests/${request._id}/status`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status, ...extraPayload }),
@@ -135,17 +158,8 @@ const DocumentPanel = () => {
   };
 
   const handleApproveRequest = (request) => handleRequestStatusChange(request, "Approved");
-  const openReleaseModal = (request) => {
-    const existing = request.receivedIdentification || {};
-    setReleaseModal(request);
-    setReleaseForm({
-      idType: existing.idType || "",
-      idNumber: existing.idNumber || "",
-      receiverName: existing.receiverName || request.residentName || request.name || "",
-    });
-  };
 
-
+  const handleReleaseAndPrint = (request) => handlePrintRequest(request);
 
 
   const handleGenerateAdminDoc = (e) => {
@@ -264,11 +278,19 @@ Issued by the Barangay Victory office and is valid until revoked, updated, or re
 };
 
 
-const handlePrintDoc = (doc) => {
+const handlePrintDoc = (doc, options = {}) => {
+  const { isGeneratedDoc = false } = options;
   const printWindow = window.open("", "_blank");
 
-  // const logo = "/assets/logo-left.png";  // Adjust logo paths
-  // const logo1 = "/assets/logo-right.png";
+  if (!printWindow) {
+    if (isGeneratedDoc) {
+      setShowGeneratedReprint(true);
+      showToast("Unable to open print window. Allow pop-ups, then use Reprint.");
+    } else {
+      showToast("Unable to open print window. Please allow pop-ups.");
+    }
+    return;
+  }
 
   printWindow.document.write(`
     <html>
@@ -424,10 +446,49 @@ const handlePrintDoc = (doc) => {
   `);
 
   printWindow.document.close();
-  printWindow.print();
 
+  const closePrintWindow = () => {
+    setTimeout(() => {
+      try {
+        if (!printWindow.closed) printWindow.close();
+      } catch (_) {
+        /* ignore */
+      }
+    }, 100);
+  };
+
+  if (isGeneratedDoc) {
+    let enteredPrintMode = false;
+    const mq = printWindow.matchMedia("print");
+
+    const onPrintMediaChange = (e) => {
+      if (e.matches) enteredPrintMode = true;
+    };
+
+    const onAfterPrint = () => {
+      mq.removeEventListener("change", onPrintMediaChange);
+      printWindow.removeEventListener("afterprint", onAfterPrint);
+
+      if (!enteredPrintMode) {
+        setShowGeneratedReprint(true);
+        showToast("Print cancelled. Click Reprint to try again.");
+      } else {
+        setShowGeneratedReprint(false);
+        showToast("Document printed successfully.");
+      }
+
+      closePrintWindow();
+    };
+
+    mq.addEventListener("change", onPrintMediaChange);
+    printWindow.addEventListener("afterprint", onAfterPrint);
+    printWindow.print();
+    return;
+  }
+
+  printWindow.print();
   showToast("Document Printed Successfully");
-  setLastGeneratedDoc(null);
+  closePrintWindow();
 };
 
   const buildDocFromRequest = (request) => {
@@ -460,7 +521,7 @@ const handlePrintDoc = (doc) => {
     };
   };
 
-  const handlePrintRequest = async (request, identification = null) => {
+  const handlePrintRequest = async (request) => {
     const doc = buildDocFromRequest(request);
     handlePrintDoc(doc);
     setGeneratedDocs((prev) => {
@@ -468,28 +529,13 @@ const handlePrintDoc = (doc) => {
       localStorage.setItem("generatedDocs", JSON.stringify(updated));
       return updated;
     });
-    const payload = identification ? { receivedIdentification: identification } : {};
-    await handleRequestStatusChange(request, "Printed", payload);
+    await handleRequestStatusChange(request, "Printed");
   };
 
   const handleReprintRequest = (request) => {
     const doc = buildDocFromRequest(request);
     handlePrintDoc(doc);
     showToast("Document reprinted successfully");
-  };
-
-  const handleConfirmRelease = async () => {
-    if (!releaseModal) return;
-    const idType = releaseForm.idType.trim();
-    const idNumber = releaseForm.idNumber.trim();
-    const receiverName = releaseForm.receiverName.trim();
-    if (!idType || !idNumber || !receiverName) {
-      showToast("Please complete ID type, ID number, and receiver name.");
-      return;
-    }
-    await handlePrintRequest(releaseModal, { idType, idNumber, receiverName });
-    setReleaseModal(null);
-    setReleaseForm({ idType: "", idNumber: "", receiverName: "" });
   };
 
   const handleOpenViewModal = (doc) => setViewModal(doc);
@@ -509,7 +555,7 @@ const handlePrintDoc = (doc) => {
       // Send SMS if phone number is available
       if (phoneNumber) {
         try {
-          const smsRes = await fetch(`${API_URL}/api/sms/send`, {
+          const smsRes = await fetch(`${API_BASE}/sms/send`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -542,7 +588,7 @@ const handlePrintDoc = (doc) => {
         const adminReplyText = `[${docType} Request] ${messageText.trim()}`;
         
         // First, try to find an existing message for this resident (prefer one without reply)
-        const existingMessagesRes = await fetch(`${API_URL}/api/messages?residentId=${residentId}`);
+        const existingMessagesRes = await fetch(`${API_BASE}/messages?residentId=${residentId}`);
         let messageId = null;
         
         if (existingMessagesRes.ok) {
@@ -559,7 +605,7 @@ const handlePrintDoc = (doc) => {
         
         // If no existing message found, create a new minimal one
         if (!messageId) {
-          const messageRes = await fetch(`${API_URL}/api/messages`, {
+          const messageRes = await fetch(`${API_BASE}/messages`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -579,7 +625,7 @@ const handlePrintDoc = (doc) => {
         
         // Add admin reply to the message (existing or newly created)
         if (messageId) {
-          const replyRes = await fetch(`${API_URL}/api/messages/${messageId}/reply`, {
+          const replyRes = await fetch(`${API_BASE}/messages/${messageId}/reply`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -645,25 +691,13 @@ const handlePrintDoc = (doc) => {
   };
 
   const handleExportHistoryExcel = () => {
-    const header = [
-      "Section",
-      "Resident",
-      "Document",
-      "Purpose",
-      "ID Type",
-      "ID Number",
-      "Receiver",
-      "Date",
-    ];
+    const header = ["Section", "Resident", "Document", "Purpose", "Date"];
 
     const generatedRows = generatedHistory.map((doc) => [
       "Generated Documents",
       doc.name || "N/A",
       doc.type || "N/A",
       doc.purpose || "N/A",
-      "",
-      "",
-      "",
       formatDateTime(doc.createdAt),
     ]);
 
@@ -672,9 +706,6 @@ const handlePrintDoc = (doc) => {
       doc.residentName || doc.name || "N/A",
       doc.documentType || doc.type || "N/A",
       doc.purpose || "N/A",
-      doc.receivedIdentification?.idType || "N/A",
-      doc.receivedIdentification?.idNumber || "N/A",
-      doc.receivedIdentification?.receiverName || "N/A",
       formatDateTime(doc.receivedAt || doc.printedAt),
     ]);
 
@@ -716,9 +747,6 @@ const handlePrintDoc = (doc) => {
           <td>${doc.residentName || doc.name || "N/A"}</td>
           <td>${doc.documentType || doc.type || "N/A"}</td>
           <td>${doc.purpose || "N/A"}</td>
-          <td>${doc.receivedIdentification?.idType || "N/A"}</td>
-          <td>${doc.receivedIdentification?.idNumber || "N/A"}</td>
-          <td>${doc.receivedIdentification?.receiverName || "N/A"}</td>
           <td>${formatDateTime(doc.receivedAt || doc.printedAt)}</td>
         </tr>`
       )
@@ -756,13 +784,13 @@ const handlePrintDoc = (doc) => {
               ${generatedRows || '<tr><td colspan="5">No generated documents yet.</td></tr>'}
             </tbody>
           </table>
-          <h2>Released Records (With Identification)</h2>
+          <h2>Released Records</h2>
           <table>
             <thead>
-              <tr><th>#</th><th>Resident</th><th>Document</th><th>Purpose</th><th>ID Type</th><th>ID Number</th><th>Receiver</th><th>Released At</th></tr>
+              <tr><th>#</th><th>Resident</th><th>Document</th><th>Purpose</th><th>Released At</th></tr>
             </thead>
             <tbody>
-              ${releasedRows || '<tr><td colspan="8">No released records yet.</td></tr>'}
+              ${releasedRows || '<tr><td colspan="5">No released records yet.</td></tr>'}
             </tbody>
           </table>
         </body>
@@ -779,177 +807,316 @@ const handlePrintDoc = (doc) => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
-      <div className="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-8 relative">
-      {/* Toast */}
-      <AnimatePresence>
-        {toast && <motion.div initial={{ opacity: 0, y: -50 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -50 }} className="fixed top-6 right-6 bg-emerald-600 text-white px-4 py-2.5 rounded-xl shadow-lg flex items-center gap-2 z-50 border border-emerald-500"><CheckCircle2 className="w-5 h-5" />{toast}</motion.div>}
-      </AnimatePresence>
-
-      {/* Header */}
-      <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="rounded-2xl border border-slate-200 bg-white/90 dark:bg-slate-900/85 dark:border-slate-700 p-5 shadow-sm">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-300">Admin Portal</p>
-        <h1 className="mt-1 text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white">Barangay Document Management</h1>
-        <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Generate documents, process requests, and track released records with identification details.</p>
-      </motion.div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="rounded-xl border border-amber-200 bg-amber-50 dark:bg-amber-500/10 dark:border-amber-500/40 p-4 shadow-sm">
-          <p className="text-xs uppercase tracking-wider text-amber-700 dark:text-amber-300">Pending</p>
-          <p className="mt-1 text-2xl font-semibold text-amber-800 dark:text-amber-200">{pendingCount}</p>
-        </div>
-        <div className="rounded-xl border border-blue-200 bg-blue-50 dark:bg-blue-500/10 dark:border-blue-500/40 p-4 shadow-sm">
-          <p className="text-xs uppercase tracking-wider text-blue-700 dark:text-blue-300">Approved</p>
-          <p className="mt-1 text-2xl font-semibold text-blue-800 dark:text-blue-200">{approvedCount}</p>
-        </div>
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 dark:bg-emerald-500/10 dark:border-emerald-500/40 p-4 shadow-sm">
-          <p className="text-xs uppercase tracking-wider text-emerald-700 dark:text-emerald-300">Printed</p>
-          <p className="mt-1 text-2xl font-semibold text-emerald-800 dark:text-emerald-200">{printedCount}</p>
-        </div>
-      </div>
-
-      {/* Document Generator */}
-      <div className="flex justify-center relative">
-        <div className="bg-white dark:bg-slate-900 shadow-sm rounded-2xl p-6 w-full max-w-2xl border border-slate-200 dark:border-slate-700 relative">
-          <h2 className="text-xl font-semibold text-slate-900 dark:text-white flex items-center gap-2"><FileText className="w-5 h-5 text-indigo-500" /> Generate Document</h2>
-          <form onSubmit={handleGenerateAdminDoc} className="space-y-3 mt-3">
-            <select value={adminForm.type} onChange={(e) => setAdminForm({ ...adminForm, type: e.target.value })} className="w-full px-4 py-2.5 border border-slate-300 rounded-lg bg-white dark:bg-slate-800 dark:text-white dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50">
-              {Object.keys(documentTemplates).map(type => <option key={type} value={type}>{type}</option>)}
-            </select>
-
-
-              <div className="relative">
-                      <input type="text" placeholder="Resident Name" value={adminForm.name} onChange={handleNameChange} className="w-full p-3 border border-slate-300 rounded-xl bg-slate-50 dark:bg-slate-800 dark:text-white dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50" required />
-                      {filteredResidents.length > 0 && filteredName !== "" && (
-                        <div className="absolute top-full left-0 dark:bg-slate-900 bg-slate-800 text-white border border-slate-600 rounded-lg mt-1 w-full max-h-40 overflow-y-auto shadow-lg z-20">
-                          {filteredResidents.map((r, i) => (
-                           <div
-                              key={i}
-                               onClick={() => {
-                                 setAdminForm(prev => ({ ...prev, name: r.name }));
-                                   setFilteredName("");
-                                    showToast(`Selected: ${r.name}`);
-                                      }}
-                                     className="px-3 py-2 dark:hover:bg-indigo-900 hover:bg-slate-900 cursor-pointer"
-                                  >
-                                     {r.name}
-                                    </div>
-                                  ))}      
-                        </div>
-                      )}
-                      {filteredResidents.length === 0 && filteredName !== "" && (
-                        <div className="absolute top-full left-0 bg-white border border-slate-300 rounded-lg mt-1 w-full shadow-lg z-20 px-3 py-2 text-slate-500 dark:bg-slate-900 dark:border-slate-700 dark:text-slate-400">
-                          No resident found
-                        </div>
-                      )}
-                    </div>
-
-
-            <textarea value={adminForm.purpose} onChange={(e) => setAdminForm({ ...adminForm, purpose: e.target.value })} placeholder="Purpose" className="w-full px-4 py-2.5 border border-slate-300 rounded-lg dark:bg-slate-800 dark:text-white dark:border-slate-600 resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500/50" rows={3} required />
-            <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2.5 rounded-lg font-semibold flex items-center justify-center gap-2 shadow-sm"><FileText className="w-5 h-5" /> Generate</button>
-
-            {lastGeneratedDoc && <button type="button" onClick={() => handlePrintDoc(lastGeneratedDoc)} className="w-full mt-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2.5 rounded-lg font-semibold flex items-center justify-center gap-2 shadow-sm"><Printer className="w-5 h-5" /> Print</button>}
-          </form>
-        </div>
-      </div>
-
-      {/* Pending Documents */}
-      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm p-6 border border-slate-200 dark:border-slate-700">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-2xl font-bold flex items-center gap-2 text-slate-900 dark:text-white">
-            <Clock className="w-6 h-6 text-yellow-500" /> Pending Documents
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">Manage approvals, release flow, and reprints from one table.</p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setReleaseHistoryModal(true)}
-              className="text-sm bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-2 rounded-lg flex items-center gap-1 shadow-sm"
+    <div className="min-h-full bg-gradient-to-b from-slate-50 via-white to-slate-100/80 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
+      <div className="relative mx-auto max-w-7xl space-y-8 px-4 py-8 sm:px-6 lg:px-8 lg:py-10">
+        {/* Toast */}
+        <AnimatePresence>
+          {toast && (
+            <motion.div
+              initial={{ opacity: 0, y: -16, x: 16 }}
+              animate={{ opacity: 1, y: 0, x: 0 }}
+              exit={{ opacity: 0, y: -16, x: 16 }}
+              className="fixed top-6 right-6 z-50 flex max-w-sm items-center gap-2.5 rounded-2xl border border-emerald-500/30 bg-emerald-600 px-4 py-3 text-sm font-medium text-white shadow-lg shadow-emerald-900/20"
             >
-              <List className="w-4 h-4" /> History
+              <CheckCircle2 className="h-5 w-5 shrink-0" />
+              {toast}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Page header */}
+        <motion.header
+          initial={{ opacity: 0, y: -12 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between"
+        >
+          <div className="flex items-start gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-lg shadow-indigo-500/25">
+              <FileText className="h-6 w-6" aria-hidden />
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-indigo-600 dark:text-indigo-400">
+                Admin Portal
+              </p>
+              <h1 className="mt-0.5 text-2xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-3xl">
+                Document Management
+              </h1>
+              <p className="mt-1 max-w-xl text-sm leading-relaxed text-slate-600 dark:text-slate-400">
+                Generate certificates, process resident requests, and track released records.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={() => setReleaseHistoryModal(true)} className={BTN_PRIMARY}>
+              <List className="h-4 w-4" />
+              View history
             </button>
-            <button onClick={fetchDocumentRequests} className="text-sm border border-slate-300 dark:border-slate-600 px-3 py-2 rounded-lg text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800">
+            <button type="button" onClick={fetchDocumentRequests} className={BTN_SECONDARY}>
+              <RefreshCw className={`h-4 w-4 ${requestsLoading ? "animate-spin" : ""}`} />
               Refresh
             </button>
           </div>
+        </motion.header>
+
+        {/* Stats */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {[
+            {
+              label: "Pending",
+              count: pendingCount,
+              icon: Clock,
+              ring: "ring-amber-200/80 dark:ring-amber-500/30",
+              bg: "bg-amber-50 dark:bg-amber-500/10",
+              iconBg: "bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300",
+              text: "text-amber-800 dark:text-amber-200",
+            },
+            {
+              label: "Approved",
+              count: approvedCount,
+              icon: FileCheck,
+              ring: "ring-blue-200/80 dark:ring-blue-500/30",
+              bg: "bg-blue-50 dark:bg-blue-500/10",
+              iconBg: "bg-blue-100 text-blue-700 dark:bg-blue-500/20 dark:text-blue-300",
+              text: "text-blue-800 dark:text-blue-200",
+            },
+            {
+              label: "Printed",
+              count: printedCount,
+              icon: Printer,
+              ring: "ring-emerald-200/80 dark:ring-emerald-500/30",
+              bg: "bg-emerald-50 dark:bg-emerald-500/10",
+              iconBg: "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300",
+              text: "text-emerald-800 dark:text-emerald-200",
+            },
+          ].map((stat) => (
+            <div
+              key={stat.label}
+              className={`rounded-2xl border border-slate-200/90 p-5 shadow-sm ring-1 ${stat.ring} ${stat.bg} dark:border-slate-700/80`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                    {stat.label}
+                  </p>
+                  <p className={`mt-2 text-3xl font-bold tabular-nums tracking-tight ${stat.text}`}>
+                    {stat.count}
+                  </p>
+                </div>
+                <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${stat.iconBg}`}>
+                  <stat.icon className="h-5 w-5" />
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
+
+        {/* Main content grid */}
+        <div className="grid grid-cols-1 gap-8 xl:grid-cols-12">
+          {/* Generate Document */}
+          <section className="xl:col-span-5">
+            <div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900/50">
+              <div className="border-b border-slate-100 bg-gradient-to-r from-indigo-50/80 to-violet-50/50 px-5 py-4 dark:border-slate-800 dark:from-indigo-950/30 dark:to-violet-950/20 sm:px-6">
+                <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-900 dark:text-white">
+                  <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-white text-indigo-600 shadow-sm ring-1 ring-slate-200/80 dark:bg-slate-800 dark:text-indigo-400 dark:ring-slate-700">
+                    <ClipboardList className="h-5 w-5" />
+                  </span>
+                  Generate Document
+                </h2>
+                <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                  Select type, resident, and purpose to issue an on-the-spot certificate.
+                </p>
+              </div>
+              <form onSubmit={handleGenerateAdminDoc} className="space-y-4 p-5 sm:p-6">
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Document type
+                  </label>
+                  <select
+                    value={adminForm.type}
+                    onChange={(e) => setAdminForm({ ...adminForm, type: e.target.value })}
+                    className={FIELD_CLASS}
+                  >
+                    {Object.keys(documentTemplates).map((type) => (
+                      <option key={type} value={type}>
+                        {type}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="relative">
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Resident name
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Search or type resident name"
+                    value={adminForm.name}
+                    onChange={handleNameChange}
+                    className={FIELD_CLASS}
+                    required
+                  />
+                  {filteredResidents.length > 0 && filteredName !== "" && (
+                    <div className="absolute top-full left-0 z-20 mt-1 max-h-44 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white py-1 shadow-xl dark:border-slate-600 dark:bg-slate-900">
+                      {filteredResidents.map((r, i) => (
+                        <div
+                          key={i}
+                          onClick={() => {
+                            setAdminForm((prev) => ({ ...prev, name: r.name }));
+                            setFilteredName("");
+                            showToast(`Selected: ${r.name}`);
+                          }}
+                          className="cursor-pointer px-3.5 py-2.5 text-sm text-slate-700 transition hover:bg-indigo-50 dark:text-slate-200 dark:hover:bg-indigo-950/50"
+                        >
+                          {r.name}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {filteredResidents.length === 0 && filteredName !== "" && (
+                    <div className="absolute top-full left-0 z-20 mt-1 w-full rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-sm text-slate-500 shadow-xl dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400">
+                      No resident found
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Purpose
+                  </label>
+                  <textarea
+                    value={adminForm.purpose}
+                    onChange={(e) => setAdminForm({ ...adminForm, purpose: e.target.value })}
+                    placeholder="State the purpose of this document"
+                    className={`${FIELD_CLASS} resize-none`}
+                    rows={3}
+                    required
+                  />
+                </div>
+                <div className="flex flex-col gap-2 pt-1">
+                  <button
+                    type="submit"
+                    className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-sm transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+                  >
+                    <FileText className="h-5 w-5" />
+                    Generate document
+                  </button>
+                  {lastGeneratedDoc && (
+                    <button
+                      type="button"
+                      onClick={() => handlePrintDoc(lastGeneratedDoc, { isGeneratedDoc: true })}
+                      className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-sm transition focus:outline-none focus:ring-2 ${
+                        showGeneratedReprint
+                          ? "bg-amber-600 hover:bg-amber-700 focus:ring-amber-500/40"
+                          : "bg-indigo-600 hover:bg-indigo-700 focus:ring-indigo-500/40"
+                      }`}
+                    >
+                      <Printer className="h-5 w-5" />
+                      {showGeneratedReprint ? "Reprint" : "Print"}
+                    </button>
+                  )}
+                </div>
+              </form>
+            </div>
+          </section>
+
+          {/* Document requests */}
+          <section className="xl:col-span-7">
+            <div className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900/50">
+              <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-800 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                <div>
+                  <h2 className="flex items-center gap-2.5 text-lg font-semibold text-slate-900 dark:text-white">
+                    <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-600 ring-1 ring-amber-200/80 dark:bg-amber-500/10 dark:text-amber-400 dark:ring-amber-500/30">
+                      <Clock className="h-5 w-5" />
+                    </span>
+                    Document requests
+                  </h2>
+                  <p className="mt-1 text-xs text-slate-600 dark:text-slate-400">
+                    Approve, release, and reprint from one workspace.
+                  </p>
+                </div>
+              </div>
+              <div className="p-5 sm:p-6">
         {requestsLoading ? (
-          <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
-            <Loader2 className="animate-spin" size={20} /> Loading requests...
+          <div className="flex flex-col items-center justify-center gap-3 py-16 text-slate-500 dark:text-slate-400">
+            <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
+            <p className="text-sm font-medium">Loading requests…</p>
           </div>
         ) : documentRequests.length === 0 ? (
-          <p className="text-sm text-slate-500 dark:text-slate-300">
-            No pending document requests yet.
-          </p>
+          <div className="flex flex-col items-center justify-center py-16 text-center">
+            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 dark:bg-slate-800">
+              <FileText className="h-7 w-7 text-slate-400" />
+            </div>
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-300">No document requests yet</p>
+            <p className="mt-1 max-w-xs text-xs text-slate-500 dark:text-slate-400">
+              New resident requests will appear here for review and release.
+            </p>
+          </div>
         ) : (
           <>
-            <div className="hidden md:block rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden">
-              <div className="max-h-[460px] overflow-auto">
+            <div className="hidden overflow-hidden rounded-xl border border-slate-200 dark:border-slate-700 md:block">
+              <div className="max-h-[min(520px,60vh)] overflow-auto">
               <table className="w-full border-collapse text-left text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
-                    <th className="p-2">Resident Name</th>
-                    <th className="p-2">Document Type</th>
-                    <th className="p-2">Purpose</th>
-                    <th className="p-2 text-center">Status</th>
-                    <th className="p-2 text-center">Action</th>
+                <thead className="sticky top-0 z-10">
+                  <tr className="border-b border-slate-200 bg-slate-50/95 backdrop-blur dark:border-slate-700 dark:bg-slate-800/95">
+                    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Resident</th>
+                    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Document</th>
+                    <th className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Purpose</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Status</th>
+                    <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Actions</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {documentRequests.map((doc) => (
-                    <tr key={doc._id} className="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/70">
-                      <td className="p-2">{doc.residentName || doc.name}</td>
-                      <td className="p-2">{doc.documentType || doc.type}</td>
-                      <td className="p-2">{doc.purpose}</td>
-                      <td className="p-2 text-center">
+                    <tr key={doc._id} className="transition hover:bg-slate-50/80 dark:hover:bg-slate-800/40">
+                      <td className="px-4 py-3.5 font-medium text-slate-900 dark:text-white">{doc.residentName || doc.name}</td>
+                      <td className="px-4 py-3.5 text-slate-600 dark:text-slate-300">{doc.documentType || doc.type}</td>
+                      <td className="max-w-[180px] truncate px-4 py-3.5 text-slate-600 dark:text-slate-400" title={doc.purpose}>{doc.purpose}</td>
+                      <td className="px-4 py-3.5 text-center">
                         <span
-                          className={`px-2 py-1 rounded-full text-xs font-medium ${
+                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
                             doc.status === "Pending"
-                              ? "bg-amber-100 text-amber-700"
+                              ? "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300"
                               : doc.status === "Approved"
-                              ? "bg-blue-100 text-blue-700"
-                              : "bg-emerald-100 text-emerald-700"
+                              ? "bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300"
+                              : "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300"
                           }`}
                         >
                           {doc.status}
                         </span>
                       </td>
-                      <td className="p-2">
-                        <div className="flex flex-wrap justify-center gap-2">
+                      <td className="px-4 py-3.5">
+                        <div className="flex flex-wrap justify-center gap-1.5">
                           <button
                             onClick={() => handleOpenViewModal(doc)}
-                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-md text-xs flex items-center gap-1 shadow-sm"
+                            className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-indigo-700"
                           >
-                            <Eye className="w-4 h-4" /> View
+                            <Eye className="h-3.5 w-3.5" /> View
                           </button>
                           {doc.status === "Pending" && (
                             <button
                               onClick={() => handleRequestStatusChange(doc, "Approved")}
-                              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md text-xs shadow-sm"
+                              className="rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
                             >
                               Approve
                             </button>
                           )}
                           {doc.status === "Approved" && (
                             <button
-                              onClick={() => openReleaseModal(doc)}
-                              className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md text-xs flex items-center gap-1 shadow-sm"
+                              onClick={() => handleReleaseAndPrint(doc)}
+                              className="inline-flex items-center gap-1 rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
                             >
-                              <Printer className="w-4 h-4" /> Print & Release
+                              <Printer className="h-3.5 w-3.5" /> Print & Release
                             </button>
                           )}
                           {doc.status === "Printed" && (
                             <>
-                              <span className="text-xs text-emerald-600 flex items-center gap-1">
-                                <CheckCircle2 size={14} /> Printed
+                              <span className="inline-flex items-center gap-1 rounded-lg bg-emerald-50 px-2 py-1.5 text-xs font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">
+                                <CheckCircle2 className="h-3.5 w-3.5" /> Done
                               </span>
                               <button
                                 onClick={() => handleReprintRequest(doc)}
-                                className="bg-slate-700 hover:bg-slate-800 text-white px-3 py-1.5 rounded-md text-xs flex items-center gap-1 shadow-sm"
+                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 shadow-sm hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700"
                               >
-                                <Printer className="w-4 h-4" /> Reprint
+                                <Printer className="h-3.5 w-3.5" /> Reprint
                               </button>
                             </>
                           )}
@@ -962,124 +1129,147 @@ const handlePrintDoc = (doc) => {
               </div>
             </div>
 
-            <div className="md:hidden flex flex-col gap-4 max-h-[460px] overflow-y-auto pr-1">
+            <div className="flex max-h-[min(520px,60vh)] flex-col gap-3 overflow-y-auto pr-0.5 md:hidden">
               {documentRequests.map((doc) => (
-                <div key={doc._id} className="border border-slate-200 dark:border-slate-700 rounded-xl p-4 shadow-sm bg-white dark:bg-slate-900/70 flex flex-col gap-2">
-                  <div className="flex justify-between items-center">
-                    <span className="font-semibold">{doc.residentName || doc.name}</span>
+                <article key={doc._id} className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 dark:border-slate-700 dark:bg-slate-800/30">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <p className="font-semibold text-slate-900 dark:text-white">{doc.residentName || doc.name}</p>
+                      <p className="mt-0.5 text-sm text-indigo-600 dark:text-indigo-400">{doc.documentType || doc.type}</p>
+                    </div>
                     <span
-                      className={`px-2 py-1 rounded-full text-xs font-medium ${
+                      className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
                         doc.status === "Pending"
-                          ? "bg-amber-100 text-amber-700"
+                          ? "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300"
                           : doc.status === "Approved"
-                          ? "bg-blue-100 text-blue-700"
-                          : "bg-emerald-100 text-emerald-700"
+                          ? "bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300"
+                          : "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300"
                       }`}
                     >
                       {doc.status}
                     </span>
                   </div>
-                  <p className="text-sm">{doc.documentType || doc.type}</p>
-                  <p className="text-sm">{doc.purpose}</p>
-                  <div className="flex flex-wrap gap-2 mt-2">
+                  <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 line-clamp-2">{doc.purpose}</p>
+                  <div className="mt-3 flex flex-wrap gap-2 border-t border-slate-200/80 pt-3 dark:border-slate-700">
                     <button
                       onClick={() => handleOpenViewModal(doc)}
-                      className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-md text-xs flex items-center justify-center gap-1 shadow-sm"
+                      className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700"
                     >
-                      <Eye className="w-4 h-4" /> View
+                      <Eye className="h-4 w-4" /> View
                     </button>
                     {doc.status === "Pending" && (
                       <button
                         onClick={() => handleRequestStatusChange(doc, "Approved")}
-                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md text-xs shadow-sm"
+                        className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
                       >
                         Approve
                       </button>
                     )}
                     {doc.status === "Approved" && (
                       <button
-                        onClick={() => openReleaseModal(doc)}
-                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-md text-xs flex items-center justify-center gap-1 shadow-sm"
+                        onClick={() => handleReleaseAndPrint(doc)}
+                        className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
                       >
-                        <Printer className="w-4 h-4" /> Print & Release
+                        <Printer className="h-4 w-4" /> Print & Release
                       </button>
                     )}
                     {doc.status === "Printed" && (
-                      <>
-                        <span className="flex-1 text-xs text-emerald-600 flex items-center justify-center gap-1">
-                          <CheckCircle2 size={14} /> Printed
-                        </span>
-                        <button
-                          onClick={() => handleReprintRequest(doc)}
-                          className="flex-1 bg-slate-700 hover:bg-slate-800 text-white px-3 py-1.5 rounded-md text-xs flex items-center justify-center gap-1 shadow-sm"
-                        >
-                          <Printer className="w-4 h-4" /> Reprint
-                        </button>
-                      </>
+                      <button
+                        onClick={() => handleReprintRequest(doc)}
+                        className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+                      >
+                        <Printer className="h-4 w-4" /> Reprint
+                      </button>
                     )}
                   </div>
-                </div>
+                </article>
               ))}
             </div>
           </>
         )}
-      </div>
+              </div>
+            </div>
+          </section>
+        </div>
 
-      {/* Released Records History Modal */}
+      {/* Document history modal */}
       <AnimatePresence>
         {releaseHistoryModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 backdrop-blur-sm flex justify-center items-center z-50 p-4">
-            <div className="backdrop-blur-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 w-full max-w-5xl shadow-2xl text-slate-900 dark:text-white max-h-[80vh] overflow-y-auto">
-              <div className="flex flex-wrap justify-between items-center gap-2 mb-4">
-                <h3 className="text-xl font-bold">Document History</h3>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-[2px]"
+            onClick={() => setReleaseHistoryModal(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.98, opacity: 0, y: 12 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.98, opacity: 0, y: 12 }}
+              onClick={(e) => e.stopPropagation()}
+              className="flex max-h-[min(88vh,800px)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            >
+              <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-800 sm:px-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Document history</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Generated and released records</p>
+                </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    onClick={handlePrintHistory}
-                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-md text-sm inline-flex items-center gap-1"
-                  >
-                    <Printer className="w-4 h-4" /> Print
+                  <button type="button" onClick={handlePrintHistory} className={BTN_PRIMARY}>
+                    <Printer className="h-4 w-4" /> Print
+                  </button>
+                  <button type="button" onClick={handleExportHistoryPdf} className={BTN_SECONDARY}>
+                    <FileDown className="h-4 w-4" /> PDF
                   </button>
                   <button
-                    onClick={handleExportHistoryPdf}
-                    className="bg-slate-700 hover:bg-slate-800 text-white px-3 py-1.5 rounded-md text-sm inline-flex items-center gap-1"
-                  >
-                    <FileDown className="w-4 h-4" /> PDF
-                  </button>
-                  <button
+                    type="button"
                     onClick={handleExportHistoryExcel}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-md text-sm inline-flex items-center gap-1"
+                    className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
                   >
-                    <Download className="w-4 h-4" /> Excel
+                    <Download className="h-4 w-4" /> Excel
                   </button>
-                  <button onClick={() => setReleaseHistoryModal(false)} className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-md">Close</button>
+                  <button
+                    type="button"
+                    onClick={() => setReleaseHistoryModal(false)}
+                    className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-800"
+                    aria-label="Close"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
                 </div>
               </div>
+              <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6">
               {releasedRequests.length === 0 && generatedHistory.length === 0 ? (
-                <p className="text-sm text-slate-500 dark:text-slate-300">No history records yet.</p>
+                <div className="py-12 text-center">
+                  <List className="mx-auto h-10 w-10 text-slate-300 dark:text-slate-600" />
+                  <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">No history records yet.</p>
+                </div>
               ) : (
-                <div className="space-y-6">
+                <div className="space-y-8">
                   <div>
-                    <h4 className="font-semibold text-base mb-2">Generated Documents</h4>
+                    <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      Generated documents
+                    </h4>
                     {generatedHistory.length === 0 ? (
-                      <p className="text-sm text-slate-500 dark:text-slate-300">No generated documents yet.</p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">No generated documents yet.</p>
                     ) : (
                       <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
                         <table className="w-full border-collapse text-left text-sm">
                           <thead>
-                            <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
-                              <th className="p-2">Resident</th>
-                              <th className="p-2">Document</th>
-                              <th className="p-2">Purpose</th>
-                              <th className="p-2">Generated At</th>
+                            <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800">
+                              <th className="px-4 py-2.5 text-xs font-semibold uppercase text-slate-500">Resident</th>
+                              <th className="px-4 py-2.5 text-xs font-semibold uppercase text-slate-500">Document</th>
+                              <th className="px-4 py-2.5 text-xs font-semibold uppercase text-slate-500">Purpose</th>
+                              <th className="px-4 py-2.5 text-xs font-semibold uppercase text-slate-500">Generated</th>
                             </tr>
                           </thead>
-                          <tbody>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                             {generatedHistory.map((doc) => (
-                              <tr key={`generated-${doc.id}`} className="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/70">
-                                <td className="p-2">{doc.name || "N/A"}</td>
-                                <td className="p-2">{doc.type || "N/A"}</td>
-                                <td className="p-2">{doc.purpose || "N/A"}</td>
-                                <td className="p-2">{doc.createdAt ? new Date(doc.createdAt).toLocaleString() : "N/A"}</td>
+                              <tr key={`generated-${doc.id}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                                <td className="px-4 py-2.5">{doc.name || "N/A"}</td>
+                                <td className="px-4 py-2.5">{doc.type || "N/A"}</td>
+                                <td className="px-4 py-2.5">{doc.purpose || "N/A"}</td>
+                                <td className="px-4 py-2.5 text-slate-500">{doc.createdAt ? new Date(doc.createdAt).toLocaleString() : "N/A"}</td>
                               </tr>
                             ))}
                           </tbody>
@@ -1089,33 +1279,29 @@ const handlePrintDoc = (doc) => {
                   </div>
 
                   <div>
-                    <h4 className="font-semibold text-base mb-2">Released Records (With Identification)</h4>
+                    <h4 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      Released records
+                    </h4>
                     {releasedRequests.length === 0 ? (
-                      <p className="text-sm text-slate-500 dark:text-slate-300">No released records yet.</p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">No released records yet.</p>
                     ) : (
                       <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
                         <table className="w-full border-collapse text-left text-sm">
                           <thead>
-                            <tr className="border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800">
-                              <th className="p-2">Resident</th>
-                              <th className="p-2">Document</th>
-                              <th className="p-2">Purpose</th>
-                              <th className="p-2">ID Type</th>
-                              <th className="p-2">ID Number</th>
-                              <th className="p-2">Receiver</th>
-                              <th className="p-2">Released At</th>
+                            <tr className="border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-800">
+                              <th className="px-4 py-2.5 text-xs font-semibold uppercase text-slate-500">Resident</th>
+                              <th className="px-4 py-2.5 text-xs font-semibold uppercase text-slate-500">Document</th>
+                              <th className="px-4 py-2.5 text-xs font-semibold uppercase text-slate-500">Purpose</th>
+                              <th className="px-4 py-2.5 text-xs font-semibold uppercase text-slate-500">Released</th>
                             </tr>
                           </thead>
-                          <tbody>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                             {releasedRequests.map((doc) => (
-                              <tr key={`released-${doc._id}`} className="border-b border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/70">
-                                <td className="p-2">{doc.residentName || doc.name}</td>
-                                <td className="p-2">{doc.documentType || doc.type}</td>
-                                <td className="p-2">{doc.purpose || "N/A"}</td>
-                                <td className="p-2">{doc.receivedIdentification?.idType || "N/A"}</td>
-                                <td className="p-2">{doc.receivedIdentification?.idNumber || "N/A"}</td>
-                                <td className="p-2">{doc.receivedIdentification?.receiverName || "N/A"}</td>
-                                <td className="p-2">
+                              <tr key={`released-${doc._id}`} className="hover:bg-slate-50 dark:hover:bg-slate-800/50">
+                                <td className="px-4 py-2.5">{doc.residentName || doc.name}</td>
+                                <td className="px-4 py-2.5">{doc.documentType || doc.type}</td>
+                                <td className="px-4 py-2.5">{doc.purpose || "N/A"}</td>
+                                <td className="px-4 py-2.5 text-slate-500">
                                   {doc.receivedAt || doc.printedAt
                                     ? new Date(doc.receivedAt || doc.printedAt).toLocaleString()
                                     : "N/A"}
@@ -1129,7 +1315,8 @@ const handlePrintDoc = (doc) => {
                   </div>
                 </div>
               )}
-            </div>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1137,125 +1324,110 @@ const handlePrintDoc = (doc) => {
       {/* View Pending Modal */}
       <AnimatePresence>
         {viewModal && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/50 backdrop-blur-sm flex justify-center items-center z-50 p-4">
-            <div className="backdrop-blur-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl p-6 w-full max-w-2xl shadow-2xl text-slate-900 dark:text-white max-h-[80vh] overflow-y-auto">
-              <div className="flex justify-between items-center mb-4">
-                <div>
-                  <h3 className="text-xl font-bold">
-                    {viewModal.residentName || viewModal.name}
-                  </h3>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">
-                    {viewModal.documentType || viewModal.type}
-                  </p>
-                </div>
-                <button onClick={() => setViewModal(null)} className="bg-rose-600 hover:bg-rose-700 text-white px-3 py-1.5 rounded-md">Close</button>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm mb-4">
-                <p><strong>Status:</strong> {viewModal.status}</p>
-                <p><strong>Purpose:</strong> {viewModal.purpose}</p>
-                <p><strong>Payment:</strong> {viewModal.paymentMethod || "Pickup"}</p>
-                <p><strong>Requested:</strong> {new Date(viewModal.createdAt).toLocaleString()}</p>
-                <p><strong>ID Type:</strong> {viewModal.receivedIdentification?.idType || "N/A"}</p>
-                <p><strong>ID Number:</strong> {viewModal.receivedIdentification?.idNumber || "N/A"}</p>
-                <p><strong>Received By:</strong> {viewModal.receivedIdentification?.receiverName || "N/A"}</p>
-                <p><strong>Received At:</strong> {viewModal.receivedAt ? new Date(viewModal.receivedAt).toLocaleString() : "N/A"}</p>
-              </div>
-              {viewModal.residentSnapshot && (
-                <div className="mb-4 border border-slate-200 dark:border-slate-700 rounded-lg p-4 bg-slate-50/60 dark:bg-slate-800/40">
-                  <h4 className="font-semibold mb-2">Resident Details</h4>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                    <p><strong>Age:</strong> {viewModal.residentSnapshot.age || "N/A"}</p>
-                    <p><strong>Gender:</strong> {viewModal.residentSnapshot.gender || "N/A"}</p>
-                    <p><strong>Civil Status:</strong> {viewModal.residentSnapshot.civilStatus || "N/A"}</p>
-                    <p><strong>Purok:</strong> {viewModal.residentSnapshot.purok || "N/A"}</p>
-                    <p><strong>Address:</strong> {viewModal.residentSnapshot.address || "N/A"}</p>
-                    <p><strong>Contact:</strong> {viewModal.residentSnapshot.phone || "N/A"}</p>
-                  </div>
-                </div>
-              )}
-              <div className="mb-3">
-                <h4 className="font-semibold">Messages:</h4>
-                {(viewModal.messages || []).length > 0 ? (
-                  viewModal.messages.map((msg, idx) => (
-                    <div key={idx} className="p-2 border border-slate-200 dark:border-slate-700 rounded-md mb-1 text-sm bg-white dark:bg-slate-800/60">
-                      <span className="font-semibold">{msg.sender}:</span> {msg.text}
-                      {msg.date && (
-                        <span className="text-xs text-slate-400 ml-2">{msg.date}</span>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-slate-500 dark:text-slate-400 text-sm">No messages yet.</p>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <input
-                  value={messageText}
-                  onChange={(e) => setMessageText(e.target.value)}
-                  placeholder="Type message..."
-                  className="flex-1 px-4 py-2 border border-slate-300 dark:border-slate-600 rounded-md dark:bg-slate-800 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                />
-                <button onClick={handleSendMessage} className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-md flex items-center gap-1 shadow-sm"><Send className="w-5 h-5" /> Send</button>
-              </div>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Print & Release Modal */}
-      <AnimatePresence>
-        {releaseModal && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/50 flex justify-center items-center z-50 p-4"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-[2px]"
+            onClick={() => setViewModal(null)}
           >
-          <motion.div
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-            className="w-full max-w-lg rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl p-6"
+            <motion.div
+              initial={{ scale: 0.98, opacity: 0, y: 12 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.98, opacity: 0, y: 12 }}
+              onClick={(e) => e.stopPropagation()}
+              className="flex max-h-[min(88vh,720px)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
             >
-              <h3 className="text-lg font-bold mb-1 dark:text-white">Record Resident Identification</h3>
-              <p className="text-sm text-slate-600 dark:text-slate-300 mb-4">
-                Add identification details before releasing and printing this document.
-              </p>
-              <div className="grid grid-cols-1 gap-3">
-                <input
-                  value={releaseForm.idType}
-                  onChange={(e) => setReleaseForm((prev) => ({ ...prev, idType: e.target.value }))}
-                  placeholder="ID Type (e.g. Barangay ID, National ID)"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md dark:bg-slate-800 dark:text-white dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                />
-                <input
-                  value={releaseForm.idNumber}
-                  onChange={(e) => setReleaseForm((prev) => ({ ...prev, idNumber: e.target.value }))}
-                  placeholder="ID Number"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md dark:bg-slate-800 dark:text-white dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                />
-                <input
-                  value={releaseForm.receiverName}
-                  onChange={(e) => setReleaseForm((prev) => ({ ...prev, receiverName: e.target.value }))}
-                  placeholder="Name of receiver"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md dark:bg-slate-800 dark:text-white dark:border-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                />
-              </div>
-              <div className="flex justify-end gap-2 mt-5">
+              <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-800 sm:px-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                    {viewModal.residentName || viewModal.name}
+                  </h3>
+                  <p className="mt-0.5 text-sm text-indigo-600 dark:text-indigo-400">
+                    {viewModal.documentType || viewModal.type}
+                  </p>
+                </div>
                 <button
-                  onClick={() => {
-                    setReleaseModal(null);
-                    setReleaseForm({ idType: "", idNumber: "", receiverName: "" });
-                  }}
-                  className="px-4 py-2 rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  type="button"
+                  onClick={() => setViewModal(null)}
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-800"
+                  aria-label="Close"
                 >
-                  Cancel
+                  <X className="h-5 w-5" />
                 </button>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6">
+              <dl className="mb-5 grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
+                {[
+                  ["Status", viewModal.status],
+                  ["Purpose", viewModal.purpose],
+                  ["Payment", viewModal.paymentMethod || "Pickup"],
+                  ["Requested", new Date(viewModal.createdAt).toLocaleString()],
+                  ["Printed at", viewModal.printedAt ? new Date(viewModal.printedAt).toLocaleString() : "N/A"],
+                ].map(([label, value]) => (
+                  <div key={label} className="rounded-xl border border-slate-100 bg-slate-50/80 px-3.5 py-2.5 dark:border-slate-800 dark:bg-slate-800/40">
+                    <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</dt>
+                    <dd className="mt-0.5 font-medium text-slate-900 dark:text-white">{value}</dd>
+                  </div>
+                ))}
+              </dl>
+              {viewModal.residentSnapshot && (
+                <div className="mb-5 rounded-xl border border-slate-200 bg-slate-50/60 p-4 dark:border-slate-700 dark:bg-slate-800/40">
+                  <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Resident details
+                  </h4>
+                  <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
+                    {[
+                      ["Age", viewModal.residentSnapshot.age],
+                      ["Gender", viewModal.residentSnapshot.gender],
+                      ["Civil status", viewModal.residentSnapshot.civilStatus],
+                      ["Purok", viewModal.residentSnapshot.purok],
+                      ["Address", viewModal.residentSnapshot.address],
+                      ["Contact", viewModal.residentSnapshot.phone],
+                    ].map(([label, value]) => (
+                      <div key={label}>
+                        <dt className="text-xs text-slate-500 dark:text-slate-400">{label}</dt>
+                        <dd className="font-medium text-slate-800 dark:text-slate-200">{value || "N/A"}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+              )}
+              <div>
+                <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Messages
+                </h4>
+                {(viewModal.messages || []).length > 0 ? (
+                  <div className="mb-4 max-h-40 space-y-2 overflow-y-auto">
+                    {viewModal.messages.map((msg, idx) => (
+                      <div
+                        key={idx}
+                        className="rounded-xl border border-slate-100 bg-white px-3.5 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-800/60"
+                      >
+                        <span className="font-semibold text-slate-900 dark:text-white">{msg.sender}:</span>{" "}
+                        {msg.text}
+                        {msg.date && <span className="ml-2 text-xs text-slate-400">{msg.date}</span>}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mb-4 text-sm text-slate-500 dark:text-slate-400">No messages yet.</p>
+                )}
+              </div>
+              </div>
+              <div className="flex shrink-0 gap-2 border-t border-slate-100 p-4 dark:border-slate-800 sm:px-6">
+                <input
+                  value={messageText}
+                  onChange={(e) => setMessageText(e.target.value)}
+                  placeholder="Type a message to the resident…"
+                  className={`${FIELD_CLASS} flex-1`}
+                />
                 <button
-                  onClick={handleConfirmRelease}
-                  className="px-4 py-2 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white font-medium shadow-sm"
+                  type="button"
+                  onClick={handleSendMessage}
+                  className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
                 >
-                  Save & Print
+                  <Send className="h-5 w-5" /> Send
                 </button>
               </div>
             </motion.div>

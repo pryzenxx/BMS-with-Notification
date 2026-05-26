@@ -13,6 +13,7 @@ import {
   FaUsers, FaRegFileAlt, FaClipboardList, FaSms,
   FaSun, FaMoon,FaUserTie,FaEye, FaEyeSlash ,FaKey,
   FaBullhorn, FaExclamationTriangle, FaCalendarAlt,
+  FaHandshake,
 } from "react-icons/fa";
 import { CheckCircle, XCircle } from "lucide-react";
 
@@ -68,6 +69,13 @@ const [loading, setLoading] = useState(false);
   { icon: <FaEnvelope />, title: "Message Alerts", desc: "Get notified about barangay activities." },
   { icon: <FaSms />, title: "Notifications", desc: "Send Notifiations in residents." },
 ];
+
+  const visionText =
+    "A progressive, peaceful, and resilient Barangay Victory empowered by united citizens, transparent leadership, sustainable development, and quality public service for a better and brighter future.";
+
+  const missionText =
+    "To serve the people of Barangay Victory through effective governance, community participation, environmental protection, public safety, and inclusive programs that promote education, livelihood, health, and social welfare while preserving unity, discipline, and integrity within the community.";
+
   const baseBtn = "px-6 py-2 rounded-full font-semibold shadow-md hover:shadow-lg transform hover:scale-105 transition-all duration-300 flex items-center gap-2";
 
 // -------------------------------------------------------------------------------------------------------
@@ -545,6 +553,67 @@ useEffect(() => {
       </div>
     </section>
 
+{/* Vision & Mission */}
+<section
+  id="vision-mission"
+  className="py-20 px-6 bg-gradient-to-b from-blue-50/80 via-white to-gray-50 dark:from-gray-900 dark:via-gray-900 dark:to-gray-950"
+>
+  <div className="max-w-6xl mx-auto">
+    <motion.div
+      initial={{ y: 20, opacity: 0 }}
+      whileInView={{ y: 0, opacity: 1 }}
+      viewport={{ once: true }}
+      transition={{ duration: 0.6 }}
+      className="text-center mb-12"
+    >
+      <p className="text-sm font-semibold uppercase tracking-[0.2em] text-blue-600 dark:text-blue-400 mb-2">
+        Our direction
+      </p>
+      <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white">
+        Vision & Mission
+      </h2>
+      <p className="mt-3 max-w-2xl mx-auto text-gray-600 dark:text-gray-300">
+        Guiding principles that shape how {systemSettings.barangayName} serves its community.
+      </p>
+    </motion.div>
+
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+      <motion.article
+        initial={{ y: 24, opacity: 0 }}
+        whileInView={{ y: 0, opacity: 1 }}
+        viewport={{ once: true }}
+        transition={{ delay: 0.1, duration: 0.6 }}
+        className="group relative overflow-hidden rounded-2xl border border-blue-100/80 bg-white/80 dark:bg-gray-800/60 dark:border-blue-900/50 p-8 shadow-lg backdrop-blur-sm text-left"
+      >
+        <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-blue-400/20 to-transparent rounded-bl-full pointer-events-none" />
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-500/30 mb-6">
+          <FaEye className="text-2xl" aria-hidden />
+        </div>
+        <h3 className="text-2xl font-bold text-blue-700 dark:text-blue-300 mb-4">Vision</h3>
+        <p className="text-gray-700 dark:text-gray-200 leading-relaxed text-base md:text-lg">
+          {visionText}
+        </p>
+      </motion.article>
+
+      <motion.article
+        initial={{ y: 24, opacity: 0 }}
+        whileInView={{ y: 0, opacity: 1 }}
+        viewport={{ once: true }}
+        transition={{ delay: 0.2, duration: 0.6 }}
+        className="group relative overflow-hidden rounded-2xl border border-indigo-100/80 bg-white/80 dark:bg-gray-800/60 dark:border-indigo-900/50 p-8 shadow-lg backdrop-blur-sm text-left"
+      >
+        <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-bl from-indigo-400/20 to-transparent rounded-bl-full pointer-events-none" />
+        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-600 to-violet-600 text-white shadow-lg shadow-indigo-500/30 mb-6">
+          <FaHandshake className="text-2xl" aria-hidden />
+        </div>
+        <h3 className="text-2xl font-bold text-indigo-700 dark:text-indigo-300 mb-4">Mission</h3>
+        <p className="text-gray-700 dark:text-gray-200 leading-relaxed text-base md:text-lg">
+          {missionText}
+        </p>
+      </motion.article>
+    </div>
+  </div>
+</section>
 
 {/* About Barangay*/}
 <section className="py-16 px-6 bg-gray-50 dark:bg-gray-900 text-center">
