@@ -15,8 +15,9 @@ import {
   X,
   FileCheck,
   ClipboardList,
+  XCircle,
 } from "lucide-react";
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import logo from "../assets/logo.png";
 import logo1 from "../assets/logo1.png";
 
@@ -30,6 +31,102 @@ const BTN_PRIMARY =
 
 const BTN_SECONDARY =
   "inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700/80";
+
+const MAX_GENERATED_PRINT_ATTEMPTS = 3;
+
+const buildPrintHtml = (doc) => `
+    <html>
+      <head>
+        <title>${doc.type}</title>
+        <style>
+          body {
+            font-family: "Times New Roman", serif;
+            margin: 50px 70px;
+            color: #000;
+            position: relative;
+          }
+          .watermark-text {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) rotate(-30deg);
+            font-size: 80px;
+            color: rgba(0,0,0,0.05);
+            font-weight: bold;
+            z-index: -1;
+            white-space: nowrap;
+          }
+          .header-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            border-bottom: 4px double #000;
+            padding-bottom: 10px;
+          }
+          .header-logos img { width: 90px; height: 90px; }
+          .header-text { text-align: center; flex: 1; }
+          .header-text h1 {
+            margin: 0;
+            font-size: 22px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: bold;
+          }
+          .header-text h2 { margin: 2px 0; font-size: 18px; font-weight: bold; }
+          .header-text h3 {
+            margin: 5px 0 20px 0;
+            font-size: 20px;
+            font-weight: bold;
+            text-decoration: underline;
+          }
+          .doc-content { margin-top: 30px; font-size: 16px; text-align: justify; }
+          .signature-section { margin-top: 80px; text-align: right; }
+          .sig-line {
+            width: 250px;
+            border-top: 1px solid #000;
+            margin-bottom: 5px;
+            margin-left: auto;
+          }
+          .sig-name { font-weight: bold; text-transform: uppercase; }
+          .sig-pos { font-size: 14px; }
+          .footer { margin-top: 50px; font-size: 14px; }
+          .note {
+            position: absolute;
+            bottom: 40px;
+            left: 70px;
+            font-size: 14px;
+            color: red;
+            font-weight: bold;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="watermark-text">BARANGAY VICTORY</div>
+        <div class="header-container">
+          <div class="header-logos"><img src="${logo}" alt="Barangay Logo Left" /></div>
+          <div class="header-text">
+            <h1>Republic of the Philippines</h1>
+            <h2>Province of Agusan del Norte</h2>
+            <h2>Municipality of Tubay</h2>
+            <h2>Barangay Victory</h2>
+            <h3>${doc.type}</h3>
+          </div>
+          <div class="header-logos"><img src="${logo1}" alt="Barangay Logo Right" /></div>
+        </div>
+        <div class="doc-content">${doc.content.replace(/\n/g, "<br>")}</div>
+        <div class="signature-section">
+          <div class="sig-line"></div>
+          <div class="sig-name">HON. JUAN DELA CRUZ</div>
+          <div class="sig-pos">Barangay Captain</div>
+        </div>
+        <div class="footer">
+          <strong>Issued on:</strong> ${new Date(doc.createdAt).toLocaleDateString()}
+        </div>
+        <div class="note">Note: "NOT VALID WITHOUT BARANGAY OFFICIAL DRY"</div>
+      </body>
+    </html>
+  `;
 
 const DocumentPanel = () => {
   const [adminForm, setAdminForm] = useState({ type: "Residency Certificate", name: "", purpose: "" });
@@ -45,6 +142,24 @@ const DocumentPanel = () => {
   const [messageText, setMessageText] = useState("");
   const [lastGeneratedDoc, setLastGeneratedDoc] = useState(null);
   const [showGeneratedReprint, setShowGeneratedReprint] = useState(false);
+  const [printAttemptsUsed, setPrintAttemptsUsed] = useState(0);
+  const [isPrintingGeneratedDoc, setIsPrintingGeneratedDoc] = useState(false);
+  const [historyStatusUpdatingId, setHistoryStatusUpdatingId] = useState(null);
+
+  const printFrameRef = useRef(null);
+  const printSessionActiveRef = useRef(false);
+
+  const resetGeneratedPrintFlow = () => {
+    printSessionActiveRef.current = false;
+    setIsPrintingGeneratedDoc(false);
+    setLastGeneratedDoc(null);
+    setShowGeneratedReprint(false);
+    setPrintAttemptsUsed(0);
+  };
+  const [rejectModal, setRejectModal] = useState(null);
+  const [rejectReason, setRejectReason] = useState("");
+  const [customRejectReason, setCustomRejectReason] = useState("");
+  const [rejectSending, setRejectSending] = useState(false);
 
    const [residents, setResidents] = useState([]);
    const [filteredName, setFilteredName] = useState("");
@@ -149,6 +264,8 @@ const DocumentPanel = () => {
           ? "Request marked as Printed"
           : status === "Approved"
           ? "Request approved"
+          : status === "Rejected"
+          ? "Request rejected"
           : "Request updated"
       );
     } catch (err) {
@@ -158,6 +275,162 @@ const DocumentPanel = () => {
   };
 
   const handleApproveRequest = (request) => handleRequestStatusChange(request, "Approved");
+
+  const handleOpenRejectModal = (request) => {
+    setRejectModal(request);
+    setRejectReason("");
+    setCustomRejectReason("");
+  };
+
+  const handleCloseRejectModal = () => {
+    setRejectModal(null);
+    setRejectReason("");
+    setCustomRejectReason("");
+  };
+
+  const getStatusBadgeClass = (status) => {
+    if (status === "Pending") {
+      return "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300";
+    }
+    if (status === "Approved") {
+      return "bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300";
+    }
+    if (status === "Rejected") {
+      return "bg-red-100 text-red-800 dark:bg-red-500/20 dark:text-red-300";
+    }
+    return "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300";
+  };
+
+  const handleConfirmReject = async () => {
+    if (!rejectModal) return;
+
+    const finalReason =
+      rejectReason === "Other" ? customRejectReason.trim() : rejectReason.trim();
+
+    if (!finalReason) {
+      showToast("Please provide a reason for rejection.");
+      return;
+    }
+
+    setRejectSending(true);
+
+    try {
+      const residentName = rejectModal.residentName || rejectModal.name || "Resident";
+      const docType = rejectModal.documentType || rejectModal.type || "Document";
+      const residentId =
+        rejectModal.resident?._id || rejectModal.resident || rejectModal.residentId || null;
+      const phoneNumber =
+        rejectModal.residentSnapshot?.phone || rejectModal.resident?.phone || null;
+      const smsMessage = `Hello ${residentName}! Your ${docType} request has been REJECTED. Reason: ${finalReason}. Please contact the barangay office for more information. Thank you.`;
+
+      const res = await fetch(`${API_BASE}/document-requests/${rejectModal._id}/status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "Rejected", adminNotes: finalReason }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || "Failed to update request status.");
+      updateRequestLocally(data.request);
+
+      if (phoneNumber && residentId) {
+        try {
+          const smsRes = await fetch(`${API_BASE}/sms/send`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              announcementId: null,
+              type: "Message",
+              messageType: "Alert",
+              title: "Document Request Rejected",
+              message: smsMessage,
+              audience: "Individual",
+              recipient: residentName,
+              recipientId: residentId,
+              recipientPhone: phoneNumber,
+            }),
+          });
+
+          if (!smsRes.ok) {
+            const errorData = await smsRes.json().catch(() => ({}));
+            console.warn("SMS sending failed:", errorData.message || "Unknown error");
+          }
+        } catch (smsErr) {
+          console.error("SMS error:", smsErr);
+        }
+      }
+
+      if (residentId) {
+        try {
+          const adminReplyText = `[${docType} Request Rejected] ${finalReason}`;
+          const existingMessagesRes = await fetch(`${API_BASE}/messages?residentId=${residentId}`);
+          let messageId = null;
+
+          if (existingMessagesRes.ok) {
+            const existingMessages = await existingMessagesRes.json();
+            const messageWithoutReply = existingMessages.find(
+              (msg) => msg.sender === "user" && !msg.text.includes("Admin message")
+            );
+            if (messageWithoutReply?.messageId) {
+              messageId = messageWithoutReply.messageId;
+            } else if (existingMessages.length > 0 && existingMessages[existingMessages.length - 1].messageId) {
+              messageId = existingMessages[existingMessages.length - 1].messageId;
+            }
+          }
+
+          if (!messageId) {
+            const messageRes = await fetch(`${API_BASE}/messages`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                residentId,
+                message: "Admin message",
+              }),
+            });
+
+            if (messageRes.ok) {
+              const messageData = await messageRes.json();
+              messageId = messageData.data?._id;
+            }
+          }
+
+          if (messageId) {
+            await fetch(`${API_BASE}/messages/${messageId}/reply`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ reply: adminReplyText }),
+            });
+          }
+        } catch (msgErr) {
+          console.error("Message save error:", msgErr);
+        }
+      }
+
+      const newMessage = {
+        sender: "Barangay Official",
+        text: smsMessage,
+        date: new Date().toLocaleString(),
+      };
+      setDocumentRequests((prev) =>
+        prev.map((doc) =>
+          doc._id === rejectModal._id
+            ? { ...doc, status: "Rejected", messages: [...(doc.messages || []), newMessage] }
+            : doc
+        )
+      );
+
+      showToast(
+        phoneNumber
+          ? "Request rejected and SMS sent to resident."
+          : "Request rejected. No phone number on file for SMS."
+      );
+      handleCloseRejectModal();
+    } catch (err) {
+      console.error("Reject request error:", err);
+      showToast("Failed to reject request. Please try again.");
+    } finally {
+      setRejectSending(false);
+    }
+  };
 
   const handleReleaseAndPrint = (request) => handlePrintRequest(request);
 
@@ -190,17 +463,149 @@ const DocumentPanel = () => {
     createdAt: new Date().toLocaleString()
   };
 
-  const updatedDocs = [newDoc, ...generatedDocs];
-  setGeneratedDocs(updatedDocs);
-  localStorage.setItem("generatedDocs", JSON.stringify(updatedDocs));
-
-  // Reset form and set last generated doc
+  // Reset form and set last generated doc (history saved only after successful print)
   setAdminForm({ ...adminForm, name: "", purpose: "" });
   setFilteredName("");
   setLastGeneratedDoc(newDoc);
+  setShowGeneratedReprint(false);
+  setPrintAttemptsUsed(0);
 
   showToast("Document Generated Successfully");
 };
+
+  const saveGeneratedDocToHistory = (doc) => {
+    if (!doc) return;
+    const entry = {
+      ...doc,
+      received: true,
+      receivedAt: new Date().toISOString(),
+    };
+    setGeneratedDocs((prev) => {
+      if (prev.some((d) => d.id === entry.id)) return prev;
+      const updated = [entry, ...prev];
+      localStorage.setItem("generatedDocs", JSON.stringify(updated));
+      return updated;
+    });
+  };
+
+
+  const printGeneratedDocument = (doc, attemptsAtStart) => {
+    if (!doc || printSessionActiveRef.current) return;
+
+    if (attemptsAtStart >= MAX_GENERATED_PRINT_ATTEMPTS) {
+      resetGeneratedPrintFlow();
+      showToast("Maximum print attempts reached. Please generate another document.");
+      return;
+    }
+
+    printSessionActiveRef.current = true;
+    setIsPrintingGeneratedDoc(true);
+
+    let frame = printFrameRef.current;
+    if (!frame) {
+      frame = document.createElement("iframe");
+      frame.setAttribute("title", "Print document");
+      frame.style.cssText =
+        "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;";
+      document.body.appendChild(frame);
+      printFrameRef.current = frame;
+    }
+
+    const printWin = frame.contentWindow;
+    if (!printWin) {
+      printSessionActiveRef.current = false;
+      setIsPrintingGeneratedDoc(false);
+      showToast("Unable to print. Please try again.");
+      return;
+    }
+
+    let sessionFinished = false;
+    let focusFallbackTimer = null;
+    let safetyTimer = null;
+    let sawPrintPreview = false;
+    const mql = printWin.matchMedia("print");
+    const onMqChange = (e) => {
+      if (e.matches) sawPrintPreview = true;
+    };
+
+    const cleanupPrintListeners = () => {
+      mql.removeEventListener("change", onMqChange);
+      printWin.removeEventListener("afterprint", onPrintDialogClosed);
+      window.removeEventListener("afterprint", onPrintDialogClosed);
+      window.removeEventListener("focus", onWindowFocus);
+      if (focusFallbackTimer) window.clearTimeout(focusFallbackTimer);
+      if (safetyTimer) window.clearTimeout(safetyTimer);
+      focusFallbackTimer = null;
+      safetyTimer = null;
+    };
+
+    const finishSession = (printedSuccessfully) => {
+      if (sessionFinished) return;
+      sessionFinished = true;
+      printSessionActiveRef.current = false;
+      setIsPrintingGeneratedDoc(false);
+      cleanupPrintListeners();
+
+      if (printedSuccessfully) {
+        saveGeneratedDocToHistory(doc);
+        resetGeneratedPrintFlow();
+        showToast("Document printed successfully.");
+        return;
+      }
+
+      const nextAttemptsUsed = attemptsAtStart + 1;
+      if (nextAttemptsUsed >= MAX_GENERATED_PRINT_ATTEMPTS) {
+        resetGeneratedPrintFlow();
+        showToast("Print canceled. Maximum attempts reached. Please generate another document.");
+      } else {
+        setPrintAttemptsUsed(nextAttemptsUsed);
+        setShowGeneratedReprint(true);
+        const remaining = MAX_GENERATED_PRINT_ATTEMPTS - nextAttemptsUsed;
+        showToast(`Print canceled. ${remaining} attempt${remaining === 1 ? "" : "s"} left.`);
+      }
+    };
+
+    const onPrintDialogClosed = () => {
+      finishSession(sawPrintPreview);
+    };
+
+    const onWindowFocus = () => {
+      window.removeEventListener("focus", onWindowFocus);
+      window.setTimeout(() => {
+        if (!sessionFinished) finishSession(false);
+      }, 300);
+    };
+
+    mql.addEventListener("change", onMqChange);
+    printWin.addEventListener("afterprint", onPrintDialogClosed);
+    window.addEventListener("afterprint", onPrintDialogClosed);
+
+    printWin.document.open();
+    printWin.document.write(buildPrintHtml(doc));
+    printWin.document.close();
+
+    window.setTimeout(() => {
+      if (sessionFinished) return;
+      try {
+        printWin.focus();
+        printWin.print();
+        focusFallbackTimer = window.setTimeout(() => {
+          window.addEventListener("focus", onWindowFocus);
+        }, 500);
+        safetyTimer = window.setTimeout(() => {
+          if (!sessionFinished) onPrintDialogClosed();
+        }, 120000);
+      } catch (err) {
+        console.error("Print error:", err);
+        finishSession(false);
+      }
+    }, 350);
+  };
+
+  const handleGeneratedDocPrint = () => {
+    if (!lastGeneratedDoc || printSessionActiveRef.current) return;
+    printGeneratedDocument(lastGeneratedDoc, printAttemptsUsed);
+  };
 
 
   const documentTemplates = {
@@ -278,173 +683,15 @@ Issued by the Barangay Victory office and is valid until revoked, updated, or re
 };
 
 
-const handlePrintDoc = (doc, options = {}) => {
-  const { isGeneratedDoc = false } = options;
+const handlePrintDoc = (doc) => {
   const printWindow = window.open("", "_blank");
 
   if (!printWindow) {
-    if (isGeneratedDoc) {
-      setShowGeneratedReprint(true);
-      showToast("Unable to open print window. Allow pop-ups, then use Reprint.");
-    } else {
-      showToast("Unable to open print window. Please allow pop-ups.");
-    }
+    showToast("Unable to open print window. Please allow pop-ups.");
     return;
   }
 
-  printWindow.document.write(`
-    <html>
-      <head>
-        <title>${doc.type}</title>
-        <style>
-          body {
-            font-family: "Times New Roman", serif;
-            margin: 50px 70px;
-            color: #000;
-            position: relative;
-          }
-
-          /* Text Watermark */
-          .watermark-text {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%) rotate(-30deg);
-            font-size: 80px;
-            color: rgba(0,0,0,0.05);
-            font-weight: bold;
-            z-index: -1;
-            white-space: nowrap;
-          }
-
-          /* Header */
-          .header-container {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 10px;
-            border-bottom: 4px double #000;
-            padding-bottom: 10px;
-          }
-
-          .header-logos img {
-            width: 90px;
-            height: 90px;
-          }
-
-          .header-text {
-            text-align: center;
-            flex: 1;
-          }
-
-          .header-text h1 {
-            margin: 0;
-            font-size: 22px;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            font-weight: bold;
-          }
-
-          .header-text h2 {
-            margin: 2px 0;
-            font-size: 18px;
-            font-weight: bold;
-          }
-
-          .header-text h3 {
-            margin: 5px 0 20px 0;
-            font-size: 20px;
-            font-weight: bold;
-            text-decoration: underline;
-          }
-
-          /* Document Body */
-          .doc-content {
-            margin-top: 30px;
-            font-size: 16px;
-            text-align: justify;
-          }
-
-          /* Signature */
-          .signature-section {
-            margin-top: 80px;
-            text-align: right;
-          }
-
-          .sig-line {
-            width: 250px;
-            border-top: 1px solid #000;
-            margin-bottom: 5px;
-            margin-left: auto;
-          }
-
-          .sig-name {
-            font-weight: bold;
-            text-transform: uppercase;
-          }
-
-          .sig-pos {
-            font-size: 14px;
-          }
-
-          /* Footer Date */
-          .footer {
-            margin-top: 50px;
-            font-size: 14px;
-          }
-
-          /* Note at bottom-left */
-          .note {
-            position: absolute;
-            bottom: 40px;
-            left: 70px;
-            font-size: 14px;
-            color: red;
-            font-weight: bold;
-          }
-        </style>
-      </head>
-
-      <body>
-        <!-- Text Watermark -->
-        <div class="watermark-text">BARANGAY VICTORY</div>
-
-        <!-- Header -->
-        <div class="header-container">
-          <div class="header-logos"> <img src="${logo}" alt="Barangay Logo Left" /></div>
-          <div class="header-text">
-            <h1>Republic of the Philippines</h1>
-            <h2>Province of Agusan del Norte</h2>
-            <h2>Municipality of Tubay</h2>
-            <h2>Barangay Victory</h2>
-            <h3>${doc.type}</h3>
-          </div>
-          <div class="header-logos"> <img src="${logo1}" alt="Barangay Logo Right" /></div>
-        </div>
-
-        <!-- Body Content -->
-        <div class="doc-content">
-          ${doc.content.replace(/\n/g, "<br>")}
-        </div>
-
-        <!-- Signature -->
-        <div class="signature-section">
-          <div class="sig-line"></div>
-          <div class="sig-name">HON. JUAN DELA CRUZ</div>
-          <div class="sig-pos">Barangay Captain</div>
-        </div>
-
-        <!-- Footer Date -->
-        <div class="footer">
-          <strong>Issued on:</strong> ${new Date(doc.createdAt).toLocaleDateString()}
-        </div>
-
-        <!-- Note -->
-        <div class="note">Note: "NOT VALID WITHOUT BARANGAY OFFICIAL DRY"</div>
-      </body>
-    </html>
-  `);
-
+  printWindow.document.write(buildPrintHtml(doc));
   printWindow.document.close();
 
   const closePrintWindow = () => {
@@ -456,35 +703,6 @@ const handlePrintDoc = (doc, options = {}) => {
       }
     }, 100);
   };
-
-  if (isGeneratedDoc) {
-    let enteredPrintMode = false;
-    const mq = printWindow.matchMedia("print");
-
-    const onPrintMediaChange = (e) => {
-      if (e.matches) enteredPrintMode = true;
-    };
-
-    const onAfterPrint = () => {
-      mq.removeEventListener("change", onPrintMediaChange);
-      printWindow.removeEventListener("afterprint", onAfterPrint);
-
-      if (!enteredPrintMode) {
-        setShowGeneratedReprint(true);
-        showToast("Print cancelled. Click Reprint to try again.");
-      } else {
-        setShowGeneratedReprint(false);
-        showToast("Document printed successfully.");
-      }
-
-      closePrintWindow();
-    };
-
-    mq.addEventListener("change", onPrintMediaChange);
-    printWindow.addEventListener("afterprint", onAfterPrint);
-    printWindow.print();
-    return;
-  }
 
   printWindow.print();
   showToast("Document Printed Successfully");
@@ -685,19 +903,103 @@ const handlePrintDoc = (doc, options = {}) => {
     return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
   };
 
+  const isDocumentReceived = (record) => {
+    if (record.received === false) return false;
+    if (record.received === true) return true;
+    if (record.receivedAt) return true;
+    const id = record.receivedIdentification;
+    if (id?.idType && id?.idNumber && id?.receiverName) return true;
+    return false;
+  };
+
+  const getReceivedStatusLabel = (record) =>
+    isDocumentReceived(record) ? "Received" : "Not Received";
+
+  const handleGeneratedDocReceivedChange = (doc, received) => {
+    const recordKey = `gen-${doc.id}`;
+    setHistoryStatusUpdatingId(recordKey);
+    setGeneratedDocs((prev) => {
+      const updated = prev.map((d) =>
+        d.id === doc.id
+          ? {
+              ...d,
+              received,
+              receivedAt: received ? d.receivedAt || new Date().toISOString() : null,
+            }
+          : d
+      );
+      localStorage.setItem("generatedDocs", JSON.stringify(updated));
+      return updated;
+    });
+    setHistoryStatusUpdatingId(null);
+    showToast(received ? "Marked as received." : "Marked as not received.");
+  };
+
+  const handleReleasedDocReceivedChange = async (doc, received) => {
+    const recordKey = `req-${doc._id}`;
+    setHistoryStatusUpdatingId(recordKey);
+    try {
+      const res = await fetch(`${API_BASE}/document-requests/${doc._id}/received`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ received }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || "Failed to update status.");
+      updateRequestLocally(data.request);
+      showToast(received ? "Marked as received." : "Marked as not received.");
+    } catch (err) {
+      console.error("Update received status error:", err);
+      showToast(err.message || "Failed to update received status.");
+    } finally {
+      setHistoryStatusUpdatingId(null);
+    }
+  };
+
+  const renderReceivedStatusControl = (record, source) => {
+    const received = isDocumentReceived(record);
+    const recordKey = source === "generated" ? `gen-${record.id}` : `req-${record._id}`;
+    const isUpdating = historyStatusUpdatingId === recordKey;
+
+    return (
+      <select
+        value={received ? "received" : "not_received"}
+        onChange={(e) => {
+          const nextReceived = e.target.value === "received";
+          if (source === "generated") {
+            handleGeneratedDocReceivedChange(record, nextReceived);
+          } else {
+            handleReleasedDocReceivedChange(record, nextReceived);
+          }
+        }}
+        disabled={isUpdating}
+        aria-label="Document received status"
+        className={`min-w-[9.5rem] rounded-lg border px-2.5 py-1.5 text-xs font-semibold shadow-sm transition focus:outline-none focus:ring-2 focus:ring-indigo-500/25 disabled:cursor-wait disabled:opacity-60 ${
+          received
+            ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+            : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+        }`}
+      >
+        <option value="received">Received</option>
+        <option value="not_received">Not Received</option>
+      </select>
+    );
+  };
+
   const csvEscape = (value) => {
     const text = (value ?? "").toString().replace(/"/g, '""');
     return `"${text}"`;
   };
 
   const handleExportHistoryExcel = () => {
-    const header = ["Section", "Resident", "Document", "Purpose", "Date"];
+    const header = ["Section", "Resident", "Document", "Purpose", "Status", "Date"];
 
     const generatedRows = generatedHistory.map((doc) => [
       "Generated Documents",
       doc.name || "N/A",
       doc.type || "N/A",
       doc.purpose || "N/A",
+      getReceivedStatusLabel(doc),
       formatDateTime(doc.createdAt),
     ]);
 
@@ -706,6 +1008,7 @@ const handlePrintDoc = (doc, options = {}) => {
       doc.residentName || doc.name || "N/A",
       doc.documentType || doc.type || "N/A",
       doc.purpose || "N/A",
+      getReceivedStatusLabel(doc),
       formatDateTime(doc.receivedAt || doc.printedAt),
     ]);
 
@@ -734,6 +1037,7 @@ const handlePrintDoc = (doc, options = {}) => {
           <td>${doc.name || "N/A"}</td>
           <td>${doc.type || "N/A"}</td>
           <td>${doc.purpose || "N/A"}</td>
+          <td>${getReceivedStatusLabel(doc)}</td>
           <td>${formatDateTime(doc.createdAt)}</td>
         </tr>`
       )
@@ -747,6 +1051,7 @@ const handlePrintDoc = (doc, options = {}) => {
           <td>${doc.residentName || doc.name || "N/A"}</td>
           <td>${doc.documentType || doc.type || "N/A"}</td>
           <td>${doc.purpose || "N/A"}</td>
+          <td>${getReceivedStatusLabel(doc)}</td>
           <td>${formatDateTime(doc.receivedAt || doc.printedAt)}</td>
         </tr>`
       )
@@ -778,19 +1083,19 @@ const handlePrintDoc = (doc, options = {}) => {
           <h2>Generated Documents</h2>
           <table>
             <thead>
-              <tr><th>#</th><th>Resident</th><th>Document</th><th>Purpose</th><th>Generated At</th></tr>
+              <tr><th>#</th><th>Resident</th><th>Document</th><th>Purpose</th><th>Status</th><th>Generated At</th></tr>
             </thead>
             <tbody>
-              ${generatedRows || '<tr><td colspan="5">No generated documents yet.</td></tr>'}
+              ${generatedRows || '<tr><td colspan="6">No generated documents yet.</td></tr>'}
             </tbody>
           </table>
           <h2>Released Records</h2>
           <table>
             <thead>
-              <tr><th>#</th><th>Resident</th><th>Document</th><th>Purpose</th><th>Released At</th></tr>
+              <tr><th>#</th><th>Resident</th><th>Document</th><th>Purpose</th><th>Status</th><th>Released At</th></tr>
             </thead>
             <tbody>
-              ${releasedRows || '<tr><td colspan="5">No released records yet.</td></tr>'}
+              ${releasedRows || '<tr><td colspan="6">No released records yet.</td></tr>'}
             </tbody>
           </table>
         </body>
@@ -999,10 +1304,10 @@ const handlePrintDoc = (doc, options = {}) => {
                     <FileText className="h-5 w-5" />
                     Generate document
                   </button>
-                  {lastGeneratedDoc && (
+                  {lastGeneratedDoc && printAttemptsUsed < MAX_GENERATED_PRINT_ATTEMPTS && (
                     <button
                       type="button"
-                      onClick={() => handlePrintDoc(lastGeneratedDoc, { isGeneratedDoc: true })}
+                      onClick={handleGeneratedDocPrint}
                       className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold text-white shadow-sm transition focus:outline-none focus:ring-2 ${
                         showGeneratedReprint
                           ? "bg-amber-600 hover:bg-amber-700 focus:ring-amber-500/40"
@@ -1010,7 +1315,9 @@ const handlePrintDoc = (doc, options = {}) => {
                       }`}
                     >
                       <Printer className="h-5 w-5" />
-                      {showGeneratedReprint ? "Reprint" : "Print"}
+                      {showGeneratedReprint
+                        ? `Reprint (${MAX_GENERATED_PRINT_ATTEMPTS - printAttemptsUsed} left)`
+                        : `Print (${MAX_GENERATED_PRINT_ATTEMPTS} attempts)`}
                     </button>
                   )}
                 </div>
@@ -1072,13 +1379,7 @@ const handlePrintDoc = (doc, options = {}) => {
                       <td className="max-w-[180px] truncate px-4 py-3.5 text-slate-600 dark:text-slate-400" title={doc.purpose}>{doc.purpose}</td>
                       <td className="px-4 py-3.5 text-center">
                         <span
-                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${
-                            doc.status === "Pending"
-                              ? "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300"
-                              : doc.status === "Approved"
-                              ? "bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300"
-                              : "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300"
-                          }`}
+                          className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusBadgeClass(doc.status)}`}
                         >
                           {doc.status}
                         </span>
@@ -1092,12 +1393,20 @@ const handlePrintDoc = (doc, options = {}) => {
                             <Eye className="h-3.5 w-3.5" /> View
                           </button>
                           {doc.status === "Pending" && (
-                            <button
-                              onClick={() => handleRequestStatusChange(doc, "Approved")}
-                              className="rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
-                            >
-                              Approve
-                            </button>
+                            <>
+                              <button
+                                onClick={() => handleRequestStatusChange(doc, "Approved")}
+                                className="rounded-lg bg-blue-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
+                              >
+                                Approve
+                              </button>
+                              <button
+                                onClick={() => handleOpenRejectModal(doc)}
+                                className="inline-flex items-center gap-1 rounded-lg bg-red-600 px-2.5 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-red-700"
+                              >
+                                <XCircle className="h-3.5 w-3.5" /> Reject
+                              </button>
+                            </>
                           )}
                           {doc.status === "Approved" && (
                             <button
@@ -1138,13 +1447,7 @@ const handlePrintDoc = (doc, options = {}) => {
                       <p className="mt-0.5 text-sm text-indigo-600 dark:text-indigo-400">{doc.documentType || doc.type}</p>
                     </div>
                     <span
-                      className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${
-                        doc.status === "Pending"
-                          ? "bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300"
-                          : doc.status === "Approved"
-                          ? "bg-blue-100 text-blue-800 dark:bg-blue-500/20 dark:text-blue-300"
-                          : "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300"
-                      }`}
+                      className={`shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ${getStatusBadgeClass(doc.status)}`}
                     >
                       {doc.status}
                     </span>
@@ -1158,12 +1461,20 @@ const handlePrintDoc = (doc, options = {}) => {
                       <Eye className="h-4 w-4" /> View
                     </button>
                     {doc.status === "Pending" && (
-                      <button
-                        onClick={() => handleRequestStatusChange(doc, "Approved")}
-                        className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
-                      >
-                        Approve
-                      </button>
+                      <>
+                        <button
+                          onClick={() => handleRequestStatusChange(doc, "Approved")}
+                          className="flex-1 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+                        >
+                          Approve
+                        </button>
+                        <button
+                          onClick={() => handleOpenRejectModal(doc)}
+                          className="flex-1 inline-flex items-center justify-center gap-1 rounded-lg bg-red-600 px-3 py-2 text-xs font-semibold text-white hover:bg-red-700"
+                        >
+                          <XCircle className="h-4 w-4" /> Reject
+                        </button>
+                      </>
                     )}
                     {doc.status === "Approved" && (
                       <button
@@ -1212,7 +1523,9 @@ const handlePrintDoc = (doc, options = {}) => {
               <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-800 sm:px-6">
                 <div>
                   <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Document history</h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">Generated and released records</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Generated and released records. Use the status dropdown to mark received or not received.
+                  </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <button type="button" onClick={handlePrintHistory} className={BTN_PRIMARY}>
@@ -1260,6 +1573,7 @@ const handlePrintDoc = (doc, options = {}) => {
                               <th className="px-4 py-2.5 text-xs font-semibold uppercase text-slate-500">Resident</th>
                               <th className="px-4 py-2.5 text-xs font-semibold uppercase text-slate-500">Document</th>
                               <th className="px-4 py-2.5 text-xs font-semibold uppercase text-slate-500">Purpose</th>
+                              <th className="px-4 py-2.5 text-xs font-semibold uppercase text-slate-500">Status</th>
                               <th className="px-4 py-2.5 text-xs font-semibold uppercase text-slate-500">Generated</th>
                             </tr>
                           </thead>
@@ -1269,6 +1583,7 @@ const handlePrintDoc = (doc, options = {}) => {
                                 <td className="px-4 py-2.5">{doc.name || "N/A"}</td>
                                 <td className="px-4 py-2.5">{doc.type || "N/A"}</td>
                                 <td className="px-4 py-2.5">{doc.purpose || "N/A"}</td>
+                                <td className="px-4 py-2.5">{renderReceivedStatusControl(doc, "generated")}</td>
                                 <td className="px-4 py-2.5 text-slate-500">{doc.createdAt ? new Date(doc.createdAt).toLocaleString() : "N/A"}</td>
                               </tr>
                             ))}
@@ -1292,6 +1607,7 @@ const handlePrintDoc = (doc, options = {}) => {
                               <th className="px-4 py-2.5 text-xs font-semibold uppercase text-slate-500">Resident</th>
                               <th className="px-4 py-2.5 text-xs font-semibold uppercase text-slate-500">Document</th>
                               <th className="px-4 py-2.5 text-xs font-semibold uppercase text-slate-500">Purpose</th>
+                              <th className="px-4 py-2.5 text-xs font-semibold uppercase text-slate-500">Status</th>
                               <th className="px-4 py-2.5 text-xs font-semibold uppercase text-slate-500">Released</th>
                             </tr>
                           </thead>
@@ -1301,6 +1617,7 @@ const handlePrintDoc = (doc, options = {}) => {
                                 <td className="px-4 py-2.5">{doc.residentName || doc.name}</td>
                                 <td className="px-4 py-2.5">{doc.documentType || doc.type}</td>
                                 <td className="px-4 py-2.5">{doc.purpose || "N/A"}</td>
+                                <td className="px-4 py-2.5">{renderReceivedStatusControl(doc, "released")}</td>
                                 <td className="px-4 py-2.5 text-slate-500">
                                   {doc.receivedAt || doc.printedAt
                                     ? new Date(doc.receivedAt || doc.printedAt).toLocaleString()
@@ -1428,6 +1745,135 @@ const handlePrintDoc = (doc, options = {}) => {
                   className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
                 >
                   <Send className="h-5 w-5" /> Send
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Reject request modal */}
+      <AnimatePresence>
+        {rejectModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 backdrop-blur-[2px]"
+            onClick={handleCloseRejectModal}
+          >
+            <motion.div
+              initial={{ scale: 0.98, opacity: 0, y: 12 }}
+              animate={{ scale: 1, opacity: 1, y: 0 }}
+              exit={{ scale: 0.98, opacity: 0, y: 12 }}
+              onClick={(e) => e.stopPropagation()}
+              className="flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900"
+            >
+              <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 py-4 dark:border-slate-800 sm:px-6">
+                <div>
+                  <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Reject document request</h3>
+                  <p className="mt-0.5 text-sm text-slate-600 dark:text-slate-400">
+                    {rejectModal.residentName || rejectModal.name} — {rejectModal.documentType || rejectModal.type}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCloseRejectModal}
+                  className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-800"
+                  aria-label="Close"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="space-y-4 p-5 sm:p-6">
+                <p className="text-sm text-slate-600 dark:text-slate-300">
+                  Provide a reason for rejection. An SMS will be sent to the resident explaining why their request was rejected.
+                </p>
+                <div>
+                  <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    Reason for rejection *
+                  </label>
+                  <select
+                    value={rejectReason}
+                    onChange={(e) => {
+                      setRejectReason(e.target.value);
+                      if (e.target.value !== "Other") setCustomRejectReason("");
+                    }}
+                    className={FIELD_CLASS}
+                    disabled={rejectSending}
+                  >
+                    <option value="">Select a reason</option>
+                    <option value="Incomplete requirements">Incomplete requirements</option>
+                    <option value="Invalid or missing valid ID">Invalid or missing valid ID</option>
+                    <option value="Incorrect information provided">Incorrect information provided</option>
+                    <option value="Purpose not acceptable">Purpose not acceptable</option>
+                    <option value="Document not available at this time">Document not available at this time</option>
+                    <option value="Duplicate request">Duplicate request</option>
+                    <option value="Other">Other (specify below)</option>
+                  </select>
+                </div>
+                {rejectReason === "Other" && (
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      Custom reason *
+                    </label>
+                    <textarea
+                      value={customRejectReason}
+                      onChange={(e) => setCustomRejectReason(e.target.value)}
+                      placeholder="Explain why this request is being rejected…"
+                      rows={3}
+                      className={`${FIELD_CLASS} resize-none`}
+                      disabled={rejectSending}
+                    />
+                  </div>
+                )}
+                <div className="rounded-xl border border-slate-100 bg-slate-50/90 p-4 dark:border-slate-800 dark:bg-slate-800/40">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    SMS preview
+                  </p>
+                  <p className="mt-2 text-sm leading-relaxed text-slate-700 dark:text-slate-200">
+                    {(() => {
+                      const finalReason =
+                        rejectReason === "Other" ? customRejectReason.trim() : rejectReason.trim();
+                      const residentName = rejectModal.residentName || rejectModal.name || "Resident";
+                      const docType = rejectModal.documentType || rejectModal.type || "Document";
+                      if (!finalReason) {
+                        return "Select or enter a reason to preview the SMS message.";
+                      }
+                      return `Hello ${residentName}! Your ${docType} request has been REJECTED. Reason: ${finalReason}. Please contact the barangay office for more information. Thank you.`;
+                    })()}
+                  </p>
+                  <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                    Phone: {rejectModal.residentSnapshot?.phone || rejectModal.resident?.phone || "No phone on file"}
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-wrap justify-end gap-2 border-t border-slate-100 p-4 dark:border-slate-800 sm:px-6">
+                <button
+                  type="button"
+                  onClick={handleCloseRejectModal}
+                  className={BTN_SECONDARY}
+                  disabled={rejectSending}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmReject}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500/40 disabled:opacity-50"
+                  disabled={rejectSending}
+                >
+                  {rejectSending ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Rejecting…
+                    </>
+                  ) : (
+                    <>
+                      <Send className="h-4 w-4" />
+                      Reject & send SMS
+                    </>
+                  )}
                 </button>
               </div>
             </motion.div>
